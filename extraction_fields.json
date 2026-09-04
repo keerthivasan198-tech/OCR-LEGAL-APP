@@ -1,0 +1,89 @@
+{
+  "document_type_id": "patta",
+  "document_type_name": "Patta document",
+  "tamil_name": "பட்டா ஆவணம் (கிராமம் & நகரம் TSLR)",
+  "category_info": {
+    "id": "patta",
+    "name": "Patta document",
+    "tamil_name": "பட்டா ஆவணம் (கிராமம் & நகரம் TSLR)",
+    "icon": "award",
+    "color": "blue",
+    "description": "Rural Patta (Name, S.No, Extent, Patta No, Village/Taluk/District) & Town TSLR (Name, S.No, Extent, Ward+Block, Town).",
+    "key_fields": [
+      "Patta Number",
+      "Pattadhar / Owner Name",
+      "Survey Number / S No",
+      "Extent",
+      "Village / Taluk / District",
+      "TSLR Town Survey No",
+      "TSLR Ward + Block",
+      "TSLR Town"
+    ]
+  },
+  "fields": {
+    "patta_number": {
+      "value": "Not Detected",
+      "confidence": 0.0,
+      "label": "Patta Number"
+    },
+    "pattadhar_name": {
+      "value": "Not Detected",
+      "confidence": 0.0,
+      "label": "Pattadhar / Owner Name"
+    },
+    "survey_number": {
+      "value": "Not Detected",
+      "confidence": 0.0,
+      "label": "Survey Number / S No"
+    },
+    "extent": {
+      "value": "Not Detected",
+      "confidence": 0.0,
+      "label": "Extent"
+    },
+    "village_taluk_district": {
+      "value": "Not Detected",
+      "confidence": 0.0,
+      "label": "Village / Taluk / District"
+    },
+    "tslr_town_survey_no": {
+      "value": "Not Detected",
+      "confidence": 0.0,
+      "label": "TSLR Town Survey No"
+    },
+    "tslr_ward_block": {
+      "value": "Not Detected",
+      "confidence": 0.0,
+      "label": "TSLR Ward + Block"
+    },
+    "tslr_town": {
+      "value": "Not Detected",
+      "confidence": 0.0,
+      "label": "TSLR Town"
+    }
+  },
+  "checklist": [
+    {
+      "title": "Patta Number Recorded",
+      "is_valid": true
+    },
+    {
+      "title": "Pattadhar Ownership Matches Revenue Records",
+      "is_valid": true
+    },
+    {
+      "title": "Survey & Subdivision Number Consistent",
+      "is_valid": true
+    },
+    {
+      "title": "Extent & Classification Verified",
+      "is_valid": true
+    },
+    {
+      "title": "TSLR Ward & Block Mapped for Urban Area",
+      "is_valid": true
+    }
+  ],
+  "text_length": 632,
+  "lines_count": 67
+}

@@ -1,0 +1,344 @@
+/* Custom styles for PlotChoice Document OCR & Cross-Verification Platform */
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+body {
+    font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+.font-mono {
+    font-family: 'JetBrains Mono', monospace;
+}
+
+/* Custom scrollbars */
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+::-webkit-scrollbar-track {
+    background: rgba(241, 245, 249, 0.6);
+}
+::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+    background: #94a3b8;
+}
+
+/* Glassmorphism effects */
+.glass-panel {
+    background: rgba(255, 255, 255, 0.94);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(226, 232, 240, 0.85);
+}
+
+.glass-card {
+    background: rgba(255, 255, 255, 0.88);
+    backdrop-filter: blur(8px);
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.glass-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 25px -5px rgba(15, 23, 42, 0.08), 0 8px 10px -6px rgba(15, 23, 42, 0.04);
+}
+
+/* Category Card active ring */
+.cat-card-active {
+    border-color: #3b82f6 !important;
+    background: linear-gradient(135deg, rgba(239, 246, 255, 0.95), rgba(240, 253, 250, 0.9)) !important;
+    box-shadow: 0 0 0 2px #3b82f6, 0 10px 15px -3px rgba(59, 130, 246, 0.15) !important;
+}
+
+/* Track Selector Active button */
+.track-btn-active {
+    background: #2563eb !important;
+    color: #ffffff !important;
+    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.25) !important;
+}
+
+/* Word-Level Bounding Box on Document Canvas */
+.word-bbox {
+    position: absolute;
+    border: 1px solid rgba(59, 130, 246, 0.40);
+    background-color: rgba(59, 130, 246, 0.04);
+    border-radius: 2px;
+    cursor: pointer;
+    transition: all 0.12s ease-in-out;
+    pointer-events: auto;
+    box-sizing: border-box;
+    z-index: 20;
+}
+
+.word-bbox:hover {
+    border: 1.5px solid #2563eb;
+    background-color: rgba(37, 99, 235, 0.24);
+    z-index: 45;
+    box-shadow: 0 0 6px rgba(37, 99, 235, 0.45);
+}
+
+.word-bbox.highlighted {
+    border: 2px solid #ea580c !important;
+    background-color: rgba(249, 115, 22, 0.28) !important;
+    box-shadow: 0 0 8px rgba(234, 88, 12, 0.6) !important;
+    z-index: 48 !important;
+}
+
+.word-bbox-tooltip {
+    display: none;
+    position: absolute;
+    bottom: calc(100% + 5px);
+    left: 50%;
+    transform: translateX(-50%);
+    background: #0f172a;
+    color: #ffffff;
+    font-size: 11px;
+    padding: 5px 9px;
+    border-radius: 6px;
+    white-space: nowrap;
+    z-index: 100;
+    pointer-events: none;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.35);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    text-align: left;
+    line-height: 1.35;
+}
+
+.word-bbox-tooltip.tooltip-bottom {
+    bottom: auto;
+    top: calc(100% + 5px);
+}
+
+.word-bbox:hover .word-bbox-tooltip {
+    display: block;
+}
+
+.word-tooltip-orig {
+    font-weight: 700;
+    color: #ffffff;
+    font-size: 11.5px;
+}
+
+.word-tooltip-trans {
+    font-weight: 600;
+    color: #34d399;
+    font-size: 11px;
+    margin-top: 1px;
+}
+
+.word-tooltip-conf {
+    color: #93c5fd;
+    font-size: 9.5px;
+    font-family: ui-monospace, monospace;
+    margin-top: 2px;
+}
+
+/* Fallback Line Bounding Box */
+.ocr-bbox {
+    position: absolute;
+    border: 1px dashed rgba(59, 130, 246, 0.25);
+    background-color: transparent;
+    border-radius: 2px;
+    cursor: pointer;
+    transition: all 0.15s ease-in-out;
+    pointer-events: auto;
+}
+
+.ocr-bbox:hover, .ocr-bbox.highlighted {
+    border: 1.5px solid #2563eb;
+    background-color: rgba(37, 99, 235, 0.12);
+    z-index: 30;
+    box-shadow: 0 0 8px rgba(37, 99, 235, 0.4);
+}
+
+.ocr-bbox-tooltip {
+    display: none;
+    position: absolute;
+    bottom: 105%;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #0f172a;
+    color: #ffffff;
+    font-size: 11px;
+    padding: 4px 8px;
+    border-radius: 4px;
+    white-space: nowrap;
+    z-index: 50;
+    pointer-events: none;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+}
+
+.ocr-bbox:hover .ocr-bbox-tooltip {
+    display: block;
+}
+
+/* Heir Tree Card styles */
+.heir-card {
+    border-left: 4px solid #3b82f6;
+    transition: all 0.2s ease;
+}
+.heir-card.signed {
+    border-left-color: #10b981;
+    background-color: rgba(240, 253, 244, 0.7);
+}
+.heir-card.missing {
+    border-left-color: #ef4444;
+    background-color: rgba(254, 242, 242, 0.7);
+}
+
+/* Print view optimization */
+@media print {
+    body {
+        background: #ffffff !important;
+    }
+    .no-print {
+        display: none !important;
+    }
+    .print-only {
+        display: block !important;
+    }
+    .glass-panel {
+        border: none !important;
+        box-shadow: none !important;
+    }
+}
+
+/* Field Bounding Boxes on Document Canvas */
+.field-canvas-box {
+    position: absolute;
+    border: 2px solid #2563eb;
+    background-color: rgba(37, 99, 235, 0.08);
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.15s ease-in-out;
+    pointer-events: auto;
+    box-sizing: border-box;
+    z-index: 25;
+}
+
+.field-canvas-box:hover, .field-canvas-box.active-field {
+    border: 2.5px solid #1e40af;
+    background-color: rgba(37, 99, 235, 0.22);
+    box-shadow: 0 0 14px rgba(37, 99, 235, 0.65);
+    z-index: 50;
+}
+
+.field-tag-label {
+    position: absolute;
+    top: -20px;
+    left: -2px;
+    background: #1e3a8a;
+    color: #ffffff;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 1px 7px;
+    border-radius: 4px 4px 0 0;
+    white-space: nowrap;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.18);
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    pointer-events: none;
+}
+
+.field-canvas-box.tag-bottom .field-tag-label {
+    top: auto;
+    bottom: -20px;
+    border-radius: 0 0 4px 4px;
+}
+
+.field-val-inside {
+    display: none;
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    background: rgba(15, 23, 42, 0.95);
+    color: #f8fafc;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 3px 8px;
+    border-radius: 4px;
+    white-space: nowrap;
+    z-index: 60;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+    pointer-events: none;
+    max-width: 320px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.field-canvas-box:hover .field-val-inside,
+.field-canvas-box.active-field .field-val-inside {
+    display: block;
+}
+
+/* Field color variations */
+.field-patta { border-color: #059669; background-color: rgba(5, 150, 105, 0.08); }
+.field-patta .field-tag-label { background: #065f46; }
+
+.field-survey { border-color: #7c3aed; background-color: rgba(124, 58, 237, 0.08); }
+.field-survey .field-tag-label { background: #5b21b6; }
+
+.field-district { border-color: #0284c7; background-color: rgba(2, 132, 199, 0.08); }
+.field-district .field-tag-label { background: #0369a1; }
+
+.field-owner { border-color: #d97706; background-color: rgba(217, 119, 6, 0.08); }
+.field-owner .field-tag-label { background: #b45309; }
+
+/* Multi-page continuous PDF scroll layout */
+.all-pages-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 24px;
+    width: 100%;
+    padding: 12px 8px 36px 8px;
+}
+
+.pdf-page-card {
+    position: relative;
+    background: #ffffff;
+    border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(15, 23, 42, 0.12);
+    border: 1px solid #cbd5e1;
+    overflow: visible;
+    width: 100%;
+    max-width: 650px;
+}
+
+.pdf-page-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 14px;
+    background: #f1f5f9;
+    border-bottom: 1px solid #e2e8f0;
+    border-top-left-radius: 7px;
+    border-top-right-radius: 7px;
+    font-size: 11px;
+    font-weight: 700;
+    color: #475569;
+}
+
+.pdf-page-body {
+    position: relative;
+    width: 100%;
+    background: #ffffff;
+    border-bottom-left-radius: 7px;
+    border-bottom-right-radius: 7px;
+    overflow: hidden;
+}
+
+.pdf-page-image {
+    width: 100%;
+    height: auto;
+    display: block;
+    user-select: none;
+}
+
+.pdf-page-bbox-layer {
+    position: absolute;
+    inset: 0;
+    pointer-events: auto;
+}
+
