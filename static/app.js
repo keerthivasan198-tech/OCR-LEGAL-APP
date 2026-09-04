@@ -9,7 +9,7 @@ const DEFAULT_CATEGORIES = [
     {"id": "layout_approval", "name": "Approved layout (if applicable) CMDA / DTCP", "tamil_name": "அங்கீகரிக்கப்பட்ட மனைப்பிரிவு (CMDA / DTCP)", "key_fields": ["Layout Approval Number (PPD/Lo)", "Sanctioning Authority (CMDA / DTCP)", "Survey Numbers & Village", "Total Extent & Number of Plots", "OSR Park & Road Gift Details"]},
     {"id": "death_legal_heir", "name": "Death certificate and legal hier certificate", "tamil_name": "இறப்பு & வாரிசுச் சான்றிதழ் (Varisu)", "key_fields": ["Deceased Name", "Date of Death & Reg No", "Varisu Certificate Order No & Date", "Surviving Legal Heirs List", "Heir Completeness Check (100%)", "Patta Mutation Status (TN Act 1983)"]},
     {"id": "loan_docs", "name": "Loan documents (if applicable)", "tamil_name": "வங்கி கடன் ஆவணங்கள் / MODT", "key_fields": ["Lending Bank / Institution", "Borrower & Co-Borrower Names", "Loan Account & Sanctioned Amount", "Security / MODT Details", "MODT Doc No, Year & SRO", "NOC / Discharge Status"]},
-    {"id": "tslr", "name": "TSLR document (Town Survey Land Record)", "tamil_name": "நகர நில அளவை ஆவணம் (TSLR)", "key_fields": ["Town Survey Number / S No", "Old Survey Number (O.Sur No)", "Owner Name (உரிமையாளர் பெயர்)", "Land Extent (Ares & Sq.M)", "Ward + Block", "Land Classification & Use", "Tenure Type (Ryotwari)", "Remarks / Mutation Order"]}
+    {"id": "tslr", "name": "TSLR document (Town Survey Land Record)", "tamil_name": "நகர நில அளவை ஆவணம் (TSLR)", "key_fields": ["District", "Taluk", "Town", "Ward", "Name", "Survey Number / S.No", "Extent", "Ward + Block", "Land classification", "Current land use", "Tenure type", "Assessment (Rs.)", "Remarks"]}
 ];
 
 // PlotChoice DocuScan OCR & Cross-Verification Platform
@@ -1080,207 +1080,108 @@ function renderTSLRFieldsLayout(fields, container) {
         return 98;
     };
 
-    // Header block (Step 2)
+    // Header block
     const districtVal = getVal(fields.district, "-");
     const talukVal = getVal(fields.taluk, "-");
     const townVal = getVal(fields.town_village, "-");
     const wardVal = getVal(fields.ward, "-");
-    const wardBlockVal = getVal(fields.ward_block, "-");
 
-    // Table rows (Steps 3 & 4)
-    const serialVal = getVal(fields.serial_no, "-");
-    const ownerVal = getVal(fields.owner_name, "-");
+    // Record fields
+    const slNoVal = getVal(fields.serial_no, "1");
+    const nameVal = getVal(fields.owner_name, "-");
     const surveyVal = getVal(fields.survey_number, "-");
     const oldSurveyVal = getVal(fields.old_survey_number, "-");
-    const doorVal = getVal(fields.municipal_door_no, "Not Recorded (-)");
     const extentVal = getVal(fields.extent, "-");
+    const wardBlockVal = getVal(fields.ward_block, "-");
     const landClassVal = getVal(fields.land_classification, "-");
     const landUseVal = getVal(fields.current_land_use, "-");
     const tenureVal = getVal(fields.tenure_type, "-");
     const assessVal = getVal(fields.assessment, "-");
-    const muniRegVal = getVal(fields.municipal_register, "Not Recorded (-)");
     const remarksVal = getVal(fields.remarks, "-");
-
-    // Digital signature & provenance (Step 7)
-    const tahsildarVal = getVal(fields.tahsildar_signatory, "-");
-    const sigDateVal = getVal(fields.digital_signature_date, "-");
-    const refNoVal = getVal(fields.eservices_ref_no, "-");
-    const printDateVal = getVal(fields.certificate_print_date, "-");
-    const portalVal = getVal(fields.portal_verification, "https://eservices.tn.gov.in");
-    const pageAuditVal = getVal(fields.page_audit, "-");
     const fmbWarningVal = getVal(fields.fmb_warning, null);
 
-    // Extent metrics
-    const extentObj = fields.extent || {};
-    const totalSqm = extentObj.total_sq_meters || (extentVal !== "-" ? "-" : "-");
-    const totalSqft = extentObj.total_sq_ft ? extentObj.total_sq_ft.toLocaleString() : "-";
-    const grounds = extentObj.grounds || "-";
+    // Formatted survey number display e.g. "35/2  (Old/O.Sur No: 249/3A1A3 pt -)"
+    let finalSurveyDisplay = surveyVal;
+    if (surveyVal !== "-" && !surveyVal.includes("Old/O.Sur No") && oldSurveyVal !== "-") {
+        finalSurveyDisplay = `${surveyVal}  (Old/O.Sur No: ${oldSurveyVal})`;
+    }
 
-    function makeRow(key, labelEn, labelTa, val, conf, note = "") {
+    // Clean Extent display if it has bracketed calculations
+    let cleanExtent = extentVal;
+    if (cleanExtent.includes("[")) {
+        cleanExtent = cleanExtent.split("[")[0].trim();
+    }
+
+    const wrapper = document.createElement("div");
+    wrapper.className = "space-y-4";
+
+    const textRepresentation = `Result\n\n=======================================================\nDistrict : ${districtVal}\nTaluk    : ${talukVal}\nTown     : ${townVal}\nWard     : ${wardVal}\n-------------------------------------------------------\nSl.No ${slNoVal}\n  Name                   : ${nameVal}\n  Survey Number / S.No   : ${finalSurveyDisplay}\n  Extent                 : ${cleanExtent}\n  Ward + Block           : ${wardBlockVal}\n  Land classification    : ${landClassVal}\n  Current land use       : ${landUseVal}\n  Tenure type            : ${tenureVal}\n  Assessment (Rs.)       : ${assessVal}\n  Remarks                : ${remarksVal}\n=======================================================`;
+
+    function makeKVRow(label, val, key = "") {
         return `
-            <div class="grid grid-cols-12 py-2.5 px-3 border-b border-slate-100 hover:bg-slate-50/70 transition-colors items-center" id="field-card-${key}" onclick="highlightFieldCard('${key}')">
-                <div class="col-span-5 pr-2">
-                    <span class="text-xs font-bold text-slate-800 block">${escapeHtml(labelEn)}</span>
-                    <span class="text-[10px] text-slate-500 font-medium">${escapeHtml(labelTa)}</span>
-                    ${note ? `<span class="text-[9px] text-slate-400 block mt-0.5">${escapeHtml(note)}</span>` : ''}
-                </div>
-                <div class="col-span-7 flex items-center justify-between gap-2">
-                    <span class="text-xs font-semibold text-slate-900 font-sans break-words select-all">${escapeHtml(String(val))}</span>
-                    <div class="flex items-center gap-1.5 shrink-0">
-                        <button onclick="event.stopPropagation(); copyToClipboard('${String(val).replace(/'/g, "\\'")}')" class="p-1 rounded text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors" title="Copy">
-                            <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+            <div class="flex items-start justify-between py-2 px-3 hover:bg-slate-50 rounded-lg transition-colors group cursor-pointer" id="field-card-${key}" onclick="highlightFieldCard('${key}')">
+                <span class="text-xs font-semibold text-slate-600 w-48 shrink-0">${escapeHtml(label)}</span>
+                <span class="text-xs font-bold text-slate-400 mr-3">:</span>
+                <div class="flex-1 flex items-center justify-between gap-2">
+                    <span class="text-xs font-bold text-slate-900 select-all font-mono">${escapeHtml(String(val))}</span>
+                    <div class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button onclick="event.stopPropagation(); copyToClipboard('${String(val).replace(/'/g, "\\'")}')" class="p-1 rounded text-slate-400 hover:text-slate-700 hover:bg-slate-200/60" title="Copy">
+                            <i data-lucide="copy" class="w-3 h-3"></i>
                         </button>
-                        ${conf ? `<span class="px-1.5 py-0.2 rounded text-[9px] font-semibold bg-slate-100 text-slate-600 border border-slate-200">${conf}%</span>` : ''}
                     </div>
                 </div>
             </div>
         `;
     }
 
-    const wrapper = document.createElement("div");
-    wrapper.className = "space-y-4";
-
     wrapper.innerHTML = `
-        <!-- OFFICIAL EXTRACT HEADER (EXECUTIVE MONOCHROME) -->
-        <div class="p-4 rounded-xl bg-slate-900 text-white shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-3">
-            <div>
-                <div class="flex items-center gap-2">
-                    <span class="px-2 py-0.5 rounded bg-white/10 text-slate-300 font-mono text-[10px] uppercase tracking-wider">OFFICIAL REGISTER EXTRACT</span>
-                    <span class="text-xs text-slate-300">தமிழ்நாடு அரசு நகர்ப்புற நில அளவை ஆவணம் (TSLR)</span>
-                </div>
-                <h3 class="text-sm font-bold text-white mt-1 flex items-center gap-2">
-                    <i data-lucide="file-text" class="w-4 h-4 text-slate-300"></i>
-                    <span>Town Survey Land Register (TSLR) Extract</span>
-                </h3>
-            </div>
-            <div class="flex items-center gap-2 text-xs font-mono">
-                <span class="px-2.5 py-1 rounded bg-slate-800 text-slate-200 border border-slate-700">T.S. No: <b>${escapeHtml(surveyVal)}</b></span>
-                <span class="px-2.5 py-1 rounded bg-slate-800 text-emerald-400 border border-slate-700">${tenureVal.includes('Ryotwari') ? 'Ryotwari Title' : 'Urban Land Record'}</span>
-            </div>
-        </div>
-
-        <!-- FMB MAP RECONCILIATION WARNING (STEP 8) -->
-        ${(fmbWarningVal || (pageAuditVal && pageAuditVal.toLowerCase().includes("not found"))) ? `
-        <div class="p-3.5 rounded-xl bg-amber-500/10 border-2 border-amber-300 text-amber-900 shadow-2xs">
-            <div class="flex items-start gap-2.5">
-                <div class="p-2 rounded-lg bg-amber-200/80 text-amber-900 shrink-0 mt-0.5">
-                    <i data-lucide="alert-triangle" class="w-4 h-4"></i>
-                </div>
-                <div>
-                    <div class="flex items-center gap-2 mb-1">
-                        <span class="text-xs font-extrabold uppercase tracking-wide text-amber-950">FMB Survey Sketch Alert</span>
-                        <span class="px-1.5 py-0.2 rounded bg-amber-200 text-amber-900 text-[10px] font-bold">Cross-Doc Verification</span>
-                    </div>
-                    <p class="text-[11px] text-amber-900/90 leading-relaxed font-medium">
-                        ${escapeHtml(fmbWarningVal || "FMB Survey Sketch missing on eServices portal (The requested map is not found). Land boundaries must be verified physically via sub-division survey sketch.")}
-                    </p>
-                </div>
-            </div>
+        ${fmbWarningVal ? `
+        <div class="p-3 rounded-xl bg-amber-500/10 border-2 border-amber-300 text-amber-900 shadow-2xs flex items-start gap-2.5 mb-3">
+            <i data-lucide="alert-triangle" class="w-4 h-4 text-amber-700 shrink-0 mt-0.5"></i>
+            <div class="text-xs font-medium">${escapeHtml(fmbWarningVal)}</div>
         </div>
         ` : ''}
 
-        <!-- 1. ADMINISTRATIVE JURISDICTION (STEP 2) -->
-        <div class="rounded-xl bg-white border border-slate-200 shadow-2xs overflow-hidden">
-            <div class="px-4 py-2.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+        <div class="rounded-xl bg-white border border-slate-200 shadow-sm overflow-hidden">
+            <!-- Header bar with Copy All action -->
+            <div class="px-4 py-3 bg-slate-900 text-white flex items-center justify-between">
                 <div class="flex items-center gap-2">
-                    <i data-lucide="map" class="w-3.5 h-3.5 text-slate-700"></i>
-                    <h4 class="text-xs font-bold text-slate-900 uppercase tracking-wider">1. Administrative Jurisdiction (நிர்வாக எல்லைகள்)</h4>
+                    <i data-lucide="file-text" class="w-4 h-4 text-slate-300"></i>
+                    <h3 class="text-sm font-bold text-white tracking-wide">Result</h3>
                 </div>
-                <span class="text-[10px] font-mono text-slate-400">Step 2: Header Block</span>
+                <button onclick="copyToClipboard(\`${textRepresentation.replace(/`/g, '\\`')}\`)" class="px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-xs font-medium text-slate-200 transition-colors flex items-center gap-1.5 shadow-2xs">
+                    <i data-lucide="copy" class="w-3 h-3"></i>
+                    <span>Copy All</span>
+                </button>
             </div>
-            <div class="divide-y divide-slate-100">
-                ${makeRow('district', 'District', 'மாவட்டம்', districtVal, getConf(fields.district))}
-                ${makeRow('taluk', 'Taluk', 'வட்டம்', talukVal, getConf(fields.taluk))}
-                ${makeRow('town_village', 'Town / Revenue Village', 'நகரம் / வருவாய் கிராமம்', townVal, getConf(fields.town_village))}
-                ${makeRow('ward', 'Ward', 'வார்டு', wardVal, getConf(fields.ward))}
-                ${makeRow('ward_block', 'Ward + Block', 'வார்டு & பிளாக்', wardBlockVal, getConf(fields.ward_block), 'Block Code & Name of Locality')}
-            </div>
-        </div>
 
-        <!-- 2. PROPERTY IDENTIFICATION & DUAL SURVEY CORRELATION (STEPS 3 & 4) -->
-        <div class="rounded-xl bg-white border border-slate-200 shadow-2xs overflow-hidden">
-            <div class="px-4 py-2.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
-                <div class="flex items-center gap-2">
-                    <i data-lucide="user-check" class="w-3.5 h-3.5 text-slate-700"></i>
-                    <h4 class="text-xs font-bold text-slate-900 uppercase tracking-wider">2. Property Details & Ownership Correlation (நில உரிமை & சர்வே எண் விவரங்கள்)</h4>
+            <!-- Content Area -->
+            <div class="p-4 space-y-3 font-mono">
+                <!-- Section 1: Header Fields -->
+                <div class="border-b border-slate-200 pb-3 space-y-0.5">
+                    ${makeKVRow('District', districtVal, 'district')}
+                    ${makeKVRow('Taluk', talukVal, 'taluk')}
+                    ${makeKVRow('Town', townVal, 'town_village')}
+                    ${makeKVRow('Ward', wardVal, 'ward')}
                 </div>
-                <span class="text-[10px] font-mono text-slate-400">Steps 3 & 4: Table Data</span>
-            </div>
-            <div class="divide-y divide-slate-100">
-                ${makeRow('owner_name', 'Name (Registered Holder / Owner)', 'உரிமையாளர் பெயர் (Adangal / UDS Details)', ownerVal, getConf(fields.owner_name), 'Pattadhar / Registered Holder from Adangal Record')}
-                ${makeRow('survey_number', 'Town Survey Number (T.S. No)', 'நகர புல எண் (Sur. Field / Sub Div.)', surveyVal, getConf(fields.survey_number), 'Current Urban Cadastral Survey Number')}
-                ${makeRow('old_survey_number', 'Old Survey Number (O.Sur No & Letter)', 'பழைய சர்வே எண் மற்றும் குறிப்பு', oldSurveyVal, getConf(fields.old_survey_number), 'Revenue correlation for mother deed / parent title trace')}
-                ${makeRow('serial_no', 'Sl.No', 'வரிசை எண்', serialVal, getConf(fields.serial_no))}
-                ${makeRow('municipal_door_no', 'Municipal Door No.', 'நகராட்சி கதவு எண்', doorVal, getConf(fields.municipal_door_no), 'Step 6: Preserved as Not Recorded if blank in register')}
-            </div>
-        </div>
 
-        <!-- 3. LAND EXTENT & METRIC NORMALIZATION (STEP 3) -->
-        <div class="rounded-xl bg-white border border-slate-200 shadow-2xs overflow-hidden">
-            <div class="px-4 py-2.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
-                <div class="flex items-center gap-2">
-                    <i data-lucide="scale" class="w-3.5 h-3.5 text-slate-700"></i>
-                    <h4 class="text-xs font-bold text-slate-900 uppercase tracking-wider">3. Land Extent & Metric Conversions (நில விஸ்தீரணம் & அளவீடு)</h4>
-                </div>
-                <span class="text-[10px] font-mono text-slate-400">Extent By Town Survey</span>
-            </div>
-            <div class="divide-y divide-slate-100">
-                ${makeRow('extent', 'Extent By Town Survey', 'ஆவண விஸ்தீரணம் (Hectare, Ares, Sq.Meter)', extentVal, getConf(fields.extent), 'Official register extent as recorded in eServices')}
-                <div class="py-2.5 px-3 bg-slate-50/50">
-                    <div class="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">Normalized Real Estate Units Conversion</div>
-                    <div class="grid grid-cols-3 gap-3 text-center">
-                        <div class="p-2 rounded-lg bg-white border border-slate-200">
-                            <span class="text-[10px] text-slate-500 font-semibold block">Total Metric Area</span>
-                            <span class="text-xs font-bold text-slate-900 font-mono">${escapeHtml(String(totalSqm))} Sq.M</span>
-                        </div>
-                        <div class="p-2 rounded-lg bg-white border border-slate-200">
-                            <span class="text-[10px] text-slate-500 font-semibold block">Square Feet</span>
-                            <span class="text-xs font-bold text-slate-900 font-mono">${escapeHtml(String(totalSqft))} Sq.Ft</span>
-                        </div>
-                        <div class="p-2 rounded-lg bg-white border border-slate-200">
-                            <span class="text-[10px] text-slate-500 font-semibold block">Grounds (மனை)</span>
-                            <span class="text-xs font-bold text-slate-900 font-mono">${escapeHtml(String(grounds))} Grounds</span>
-                        </div>
+                <!-- Section 2: Sl.No & Record Fields -->
+                <div class="space-y-0.5 pt-1">
+                    <div class="px-3 py-1 text-xs font-extrabold text-blue-700 tracking-wider">
+                        Sl.No ${escapeHtml(slNoVal)}
+                    </div>
+                    <div class="pl-3 space-y-0.5">
+                        ${makeKVRow('Name', nameVal, 'owner_name')}
+                        ${makeKVRow('Survey Number / S.No', finalSurveyDisplay, 'survey_number')}
+                        ${makeKVRow('Extent', cleanExtent, 'extent')}
+                        ${makeKVRow('Ward + Block', wardBlockVal, 'ward_block')}
+                        ${makeKVRow('Land classification', landClassVal, 'land_classification')}
+                        ${makeKVRow('Current land use', landUseVal, 'current_land_use')}
+                        ${makeKVRow('Tenure type', tenureVal, 'tenure_type')}
+                        ${makeKVRow('Assessment (Rs.)', assessVal, 'assessment')}
+                        ${makeKVRow('Remarks', remarksVal, 'remarks')}
                     </div>
                 </div>
-            </div>
-        </div>
-
-        <!-- 4. TENURE, LAND CLASSIFICATION & REVENUE (STEPS 4 & 6) -->
-        <div class="rounded-xl bg-white border border-slate-200 shadow-2xs overflow-hidden">
-            <div class="px-4 py-2.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
-                <div class="flex items-center gap-2">
-                    <i data-lucide="shield-check" class="w-3.5 h-3.5 text-slate-700"></i>
-                    <h4 class="text-xs font-bold text-slate-900 uppercase tracking-wider">4. Tenure, Classification & Revenue Assessment (வகைப்பாடு, உரிமை & தீர்வை)</h4>
-                </div>
-                <span class="text-[10px] font-mono text-slate-400">Statutory Assessment</span>
-            </div>
-            <div class="divide-y divide-slate-100">
-                ${makeRow('tenure_type', 'Tenure Type', 'நில உரிமை முறை (Govt/Mitta/Zamindari/Inam)', tenureVal, getConf(fields.tenure_type), 'Statutory direct tenure under Tamil Nadu Survey & Boundaries Act')}
-                ${makeRow('land_classification', 'Land Classification', 'நில வகைப்பாடு (Dry/Wet/Promboke/House-site)', landClassVal, getConf(fields.land_classification), 'Approved municipal revenue land classification')}
-                ${makeRow('current_land_use', 'Current Land Use', 'தற்போதைய பயன்பாடு (How the holding is utilised)', landUseVal, getConf(fields.current_land_use), 'Verified non-agricultural / building structure status')}
-                ${makeRow('assessment', 'Assessment (Rs.)', 'தீர்வை / நில வரி (Municipal, Govt.)', assessVal, getConf(fields.assessment), 'Statutory municipal and government revenue dues')}
-                ${makeRow('municipal_register', 'Municipal Register', 'நகராட்சி பதிவேடு', muniRegVal, getConf(fields.municipal_register))}
-                ${makeRow('remarks', 'Remarks / Transfer Order', 'குறிப்புகள் / பட்டா மாறுதல் உத்தரவு', remarksVal, getConf(fields.remarks), 'Mutation transfer order reference number and dates')}
-            </div>
-        </div>
-
-        <!-- 5. PROVENANCE, DIGITAL SIGNATURE & MULTI-PAGE AUDIT (STEPS 7 & 8) -->
-        <div class="rounded-xl bg-white border border-slate-200 shadow-2xs overflow-hidden">
-            <div class="px-4 py-2.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
-                <div class="flex items-center gap-2">
-                    <i data-lucide="check-check" class="w-3.5 h-3.5 text-slate-700"></i>
-                    <h4 class="text-xs font-bold text-slate-900 uppercase tracking-wider">5. Certificate Provenance & Multi-Page Audit (சான்றிதழ் உண்மைத்தன்மை & பக்க தணிக்கை)</h4>
-                </div>
-                <span class="text-[10px] font-mono text-slate-400">Steps 7 & 8: Signature & Map</span>
-            </div>
-            <div class="divide-y divide-slate-100">
-                ${makeRow('tahsildar_signatory', 'Digital Signature Authority', 'வட்டாட்சியர் / மின் கையொப்பம்', tahsildarVal, getConf(fields.tahsildar_signatory), 'Authoritative issuing Tahsildar for jurisdiction')}
-                ${makeRow('digital_signature_date', 'Digital Signature Date', 'கையொப்ப நாள்', sigDateVal, getConf(fields.digital_signature_date))}
-                ${makeRow('eservices_ref_no', 'eServices Verification Ref No', 'சான்றிதழ் குறிப்பு எண்', refNoVal, getConf(fields.eservices_ref_no), 'Validates QR code and digital registration record on tn.gov.in')}
-                ${makeRow('certificate_print_date', 'Print Date & Time', 'அச்சடிக்கப்பட்ட நாள்', printDateVal, getConf(fields.certificate_print_date))}
-                ${makeRow('portal_verification', 'Verification Portal', 'சரிபார்ப்பு இணையதளம்', portalVal, getConf(fields.portal_verification))}
-                ${makeRow('page_audit', 'Multi-Page & Survey Map Audit', 'பக்க & வரைபட சரிபார்ப்பு', pageAuditVal, getConf(fields.page_audit), 'Step 8: Scanned all pages to verify survey field-map sketch')}
             </div>
         </div>
     `;
@@ -1423,15 +1324,15 @@ function renderTableTab(extraction) {
             </div>
             <div class="overflow-x-auto max-h-[520px] rounded-xl border border-slate-200 shadow-2xs">
                 <table class="w-full text-left text-xs border-collapse">
-                    <thead class="bg-slate-800 text-white font-semibold sticky top-0 shadow-2xs">
+                    <thead class="bg-slate-100 text-slate-900 font-bold sticky top-0 shadow-2xs border-b border-slate-200">
                         <tr>
-                            <th class="p-2.5 border-b border-slate-700 text-center w-10">Sr.</th>
-                            <th class="p-2.5 border-b border-slate-700">Doc No/Year</th>
-                            <th class="p-2.5 border-b border-slate-700">Date</th>
-                            <th class="p-2.5 border-b border-slate-700">Nature</th>
-                            <th class="p-2.5 border-b border-slate-700">Executant(s)</th>
-                            <th class="p-2.5 border-b border-slate-700">Claimant(s)</th>
-                            <th class="p-2.5 border-b border-slate-700">Consideration</th>
+                            <th class="p-2.5 border-b border-slate-200 text-center w-10">Sr.</th>
+                            <th class="p-2.5 border-b border-slate-200">Doc No/Year</th>
+                            <th class="p-2.5 border-b border-slate-200">Date</th>
+                            <th class="p-2.5 border-b border-slate-200">Nature</th>
+                            <th class="p-2.5 border-b border-slate-200">Executant(s)</th>
+                            <th class="p-2.5 border-b border-slate-200">Claimant(s)</th>
+                            <th class="p-2.5 border-b border-slate-200">Consideration Value</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-slate-200 bg-white">

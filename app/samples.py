@@ -118,7 +118,7 @@ DOCUMENT_CATEGORIES = [
         "color": "cyan",
         "description": "Tamil Nadu Urban Land Records: Town Survey Land Register extract with Town Survey No, Old Survey No, Ward & Block, Extent, Land classification, Current land use, Tenure type, Assessment, and Mutation remarks.",
         "key_fields": [
-            "Owner Name", "Town Survey Number / S.No", "Old Survey Number", "Extent (Ares / Sq.M)", "Ward + Block", "Town / Village", "Taluk", "District", "Land Classification", "Current Land Use", "Tenure Type", "Assessment (Rs.)", "Remarks"
+            "District", "Taluk", "Town", "Ward", "Name", "Survey Number / S.No", "Extent", "Ward + Block", "Land classification", "Current land use", "Tenure type", "Assessment (Rs.)", "Remarks"
         ]
     }
 ]
@@ -796,45 +796,50 @@ Page 1 of 2 (Page 2 Survey Field-Map Sketch: W9arpBWxOja8…)
         "structured": {
             "document_type": "TSLR document",
             "district": {
-                "value": "Chennai (சென்னை)",
+                "value": "Chennai",
                 "confidence": 0.98,
                 "label": "District",
                 "box": {"x_pct": 5.0, "y_pct": 8.0, "w_pct": 45.0, "h_pct": 3.8}
             },
             "taluk": {
-                "value": "Ayanavaram (அயனாவரம்)",
+                "value": "Ayanavaram",
                 "confidence": 0.98,
                 "label": "Taluk",
                 "box": {"x_pct": 5.0, "y_pct": 13.0, "w_pct": 50.0, "h_pct": 3.8}
             },
             "town_village": {
-                "value": "Villivakkam (வில்லிவாக்கம்)",
+                "value": "Villivakkam",
                 "confidence": 0.98,
-                "label": "Town / Village",
+                "label": "Town",
                 "box": {"x_pct": 5.0, "y_pct": 18.0, "w_pct": 50.0, "h_pct": 3.8}
             },
-            "owner_name": {
-                "value": "K. Sukumar (கே. சுகுமார்)",
+            "ward": {
+                "value": "001",
                 "confidence": 0.98,
-                "label": "Owner Name",
+                "label": "Ward",
+                "box": {"x_pct": 5.0, "y_pct": 23.0, "w_pct": 30.0, "h_pct": 3.8}
+            },
+            "serial_no": {
+                "value": "1",
+                "confidence": 0.95,
+                "label": "Sl.No"
+            },
+            "owner_name": {
+                "value": "K. Sukumar  (Tamil: கே. சுகுமார்)",
+                "confidence": 0.98,
+                "label": "Name",
                 "box": {"x_pct": 5.0, "y_pct": 28.0, "w_pct": 85.0, "h_pct": 3.8}
             },
             "survey_number": {
-                "value": "35/2",
+                "value": "35/2  (Old/O.Sur No: 249/3A1A3 pt -)",
                 "confidence": 0.98,
-                "label": "Town Survey Number / S.No",
-                "box": {"x_pct": 5.0, "y_pct": 33.0, "w_pct": 40.0, "h_pct": 3.8}
-            },
-            "old_survey_number": {
-                "value": "249/3A1A3 pt",
-                "confidence": 0.95,
-                "label": "Old Survey Number (O.Sur No)",
-                "box": {"x_pct": 45.0, "y_pct": 33.0, "w_pct": 45.0, "h_pct": 3.8}
+                "label": "Survey Number / S.No",
+                "box": {"x_pct": 5.0, "y_pct": 33.0, "w_pct": 85.0, "h_pct": 3.8}
             },
             "extent": {
-                "value": "1 Are(s), 73.5 Sq.Meter(s) [≈ 173.5 Sq.M / 1,867.5 Sq.Ft]",
+                "value": "1 Are(s), 73.5 Sq.Meter(s)",
                 "confidence": 0.98,
-                "label": "Land Extent",
+                "label": "Extent",
                 "box": {"x_pct": 5.0, "y_pct": 38.0, "w_pct": 85.0, "h_pct": 3.8}
             },
             "ward_block": {
@@ -844,27 +849,32 @@ Page 1 of 2 (Page 2 Survey Field-Map Sketch: W9arpBWxOja8…)
                 "box": {"x_pct": 5.0, "y_pct": 43.0, "w_pct": 60.0, "h_pct": 3.8}
             },
             "land_classification": {
-                "value": "House-site (Manai) (குடியிருப்பு மனை)",
+                "value": "House-site (Manai)",
                 "confidence": 0.96,
-                "label": "Land Classification",
+                "label": "Land classification",
                 "box": {"x_pct": 5.0, "y_pct": 48.0, "w_pct": 75.0, "h_pct": 3.8}
             },
             "current_land_use": {
-                "value": "Building --> Non-agricultural (கட்டிடம் / விவசாயமற்ற நிலம்)",
+                "value": "Building --> Non-agricultural",
                 "confidence": 0.95,
-                "label": "Current Land Use",
+                "label": "Current land use",
                 "box": {"x_pct": 5.0, "y_pct": 53.0, "w_pct": 85.0, "h_pct": 3.8}
             },
             "tenure_type": {
-                "value": "Ryotwari (ரயத்துவாரி - நேரடி அரசு பட்டா)",
+                "value": "Ryotwari",
                 "confidence": 0.98,
-                "label": "Tenure Type",
+                "label": "Tenure type",
                 "box": {"x_pct": 5.0, "y_pct": 58.0, "w_pct": 65.0, "h_pct": 3.8}
+            },
+            "assessment": {
+                "value": "Municipal=-, Govt=10.00",
+                "confidence": 0.95,
+                "label": "Assessment (Rs.)"
             },
             "remarks": {
                 "value": "2023/0153/02/047290TR DT. 2023-11-30 TR DT: 18-12-2025",
                 "confidence": 0.96,
-                "label": "Remarks / Mutation Order",
+                "label": "Remarks",
                 "box": {"x_pct": 5.0, "y_pct": 68.0, "w_pct": 90.0, "h_pct": 4.0}
             }
         }

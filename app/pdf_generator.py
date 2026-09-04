@@ -115,9 +115,41 @@ class _ECNumberedCanvas(canvas.Canvas):
         self.restoreState()
 
 
+def _sanitize_text_for_pdf(text: Any) -> str:
+    """Sanitize strings to ensure 100% clean ASCII / Latin-1 for Helvetica in ReportLab."""
+    if text is None:
+        return ""
+    s = str(text)
+    # Replace unicode quotes, dashes, ellipsis, spaces, currency symbols
+    replacements = {
+        '“': '"', '”': '"', '’': "'", '‘': "'", '`': "'", '´': "'",
+        '—': ' - ', '–': ' - ', '…': '...', '\u00a0': ' ',
+        '•': '*', '₹': 'Rs. ', '™': '', '®': '', '©': '(c)',
+        '\u200b': '', '\u200c': '', '\u200d': '', '\ufeff': '',
+    }
+    for k, v in replacements.items():
+        s = s.replace(k, v)
+    
+    # If string contains bilingual pattern like "English (Tamil)", strip the Tamil parenthetical
+    s = re.sub(r'\s*\([\u0b80-\u0bff\s\.\-—/,]+\)', '', s)
+    # Strip all Tamil Unicode characters (U+0B80 to U+0BFF)
+    s = re.sub(r'[\u0b80-\u0bff]', '', s)
+    # Strip any character with ord(c) > 255 to guarantee 100% Latin-1 compliance
+    s = "".join(ch for ch in s if ord(ch) <= 255)
+    # Clean up empty parens like () or ( )
+    s = re.sub(r'\(\s*\)', '', s)
+    # Clean up duplicate punctuation like (. ) or (. ;)
+    s = re.sub(r'\(\s*[.,;:\-]+\s*\)', '', s)
+    # Clean up leading/trailing dashes or extra spaces
+    s = re.sub(r'\s*-\s*$', '', s)
+    s = re.sub(r'^\s*-\s*', '', s)
+    s = re.sub(r'\s+', ' ', s).strip()
+    return s
+
+
 def generate_ec_extracted_report_pdf(ec_data: dict) -> bytes:
     """
-    Generate authoritative, 4-page publication-ready Encumbrance Certificate Extracted Report
+    Generate authoritative, publication-ready Encumbrance Certificate Extracted Report
     matching the exact structure, typography, tables, and precision of TNREGINET standards.
     """
     buffer = io.BytesIO()
@@ -134,7 +166,7 @@ def generate_ec_extracted_report_pdf(ec_data: dict) -> bytes:
 
     styles = getSampleStyleSheet()
 
-    # Custom typography styles matching the target PDF exactly
+    # Custom typography styles matching the target layout exactly
     title_style = ParagraphStyle(
         'ECTitle',
         fontName='Helvetica-Bold',
@@ -208,33 +240,33 @@ def generate_ec_extracted_report_pdf(ec_data: dict) -> bytes:
     th_style = ParagraphStyle(
         'ECTableH',
         fontName='Helvetica-Bold',
-        fontSize=7.5,
-        leading=9.5,
-        textColor=colors.white
+        fontSize=7.2,
+        leading=9,
+        textColor=colors.HexColor('#0f172a')
     )
 
     td_style = ParagraphStyle(
         'ECTableD',
         fontName='Helvetica',
-        fontSize=7.5,
-        leading=9.5,
+        fontSize=7.2,
+        leading=9.2,
         textColor=colors.HexColor('#0f172a')
     )
 
     td_bold = ParagraphStyle(
         'ECTableDBold',
         fontName='Helvetica-Bold',
-        fontSize=7.5,
-        leading=9.5,
+        fontSize=7.2,
+        leading=9.2,
         textColor=colors.HexColor('#0f172a')
     )
 
     td_note = ParagraphStyle(
         'ECTableDNote',
         fontName='Helvetica-Oblique',
-        fontSize=6.8,
-        leading=8.5,
-        textColor=colors.HexColor('#64748b')
+        fontSize=6.5,
+        leading=8.2,
+        textColor=colors.HexColor('#475569')
     )
 
     caveat_p = ParagraphStyle(
@@ -270,33 +302,33 @@ def generate_ec_extracted_report_pdf(ec_data: dict) -> bytes:
     prop_data = [
         [
             Paragraph("<b>Sub-Registrar Office (SRO)</b>", meta_label),
-            Paragraph(ec_data.get("sro", "Adayar"), meta_val),
+            Paragraph(_sanitize_text_for_pdf(ec_data.get("sro", "Adayar")), meta_val),
             Paragraph("<b>Certificate Issue Date</b>", meta_label),
-            Paragraph(ec_data.get("issue_date", "29-Aug-2026"), meta_val),
+            Paragraph(_sanitize_text_for_pdf(ec_data.get("issue_date", "29-Aug-2026")), meta_val),
         ],
         [
             Paragraph("<b>Village</b>", meta_label),
-            Paragraph(ec_data.get("village", "Adyar"), meta_val),
+            Paragraph(_sanitize_text_for_pdf(ec_data.get("village", "Adyar")), meta_val),
             Paragraph("<b>Survey Number(s) Searched</b>", meta_label),
-            Paragraph(str(ec_data.get("survey_searched", "5")), meta_val),
+            Paragraph(_sanitize_text_for_pdf(str(ec_data.get("survey_searched", "5"))), meta_val),
         ],
         [
             Paragraph("<b>Zone</b>", meta_label),
-            Paragraph(ec_data.get("zone", "Chennai"), meta_val),
+            Paragraph(_sanitize_text_for_pdf(ec_data.get("zone", "Chennai")), meta_val),
             Paragraph("<b>District</b>", meta_label),
-            Paragraph(ec_data.get("district", "Chennai South"), meta_val),
+            Paragraph(_sanitize_text_for_pdf(ec_data.get("district", "Chennai South")), meta_val),
         ],
         [
             Paragraph("<b>Search Period Requested</b>", meta_label),
-            Paragraph(ec_data.get("search_period", "29-Aug-2004 to 28-Nov-2011"), meta_val),
+            Paragraph(_sanitize_text_for_pdf(ec_data.get("search_period", "29-Aug-2004 to 28-Nov-2011")), meta_val),
             Paragraph("<b>SRO Data Available From</b>", meta_label),
-            Paragraph(ec_data.get("sro_available_from", "29-Aug-2004 to 28-Nov-2011"), meta_val),
+            Paragraph(_sanitize_text_for_pdf(ec_data.get("sro_available_from", "29-Aug-2004 to 28-Nov-2011")), meta_val),
         ],
         [
             Paragraph("<b>Form Type</b>", meta_label),
-            Paragraph(ec_data.get("form_type", "Form 15 equivalent — TRANSACTIONS FOUND (35 registered entries)"), meta_val),
+            Paragraph(_sanitize_text_for_pdf(ec_data.get("form_type", "Form 15 equivalent — TRANSACTIONS FOUND (35 registered entries)")), meta_val),
             Paragraph("<b>Total Entries Found</b>", meta_label),
-            Paragraph(str(ec_data.get("total_entries", "35")), meta_val),
+            Paragraph(_sanitize_text_for_pdf(str(ec_data.get("total_entries", "35"))), meta_val),
         ],
     ]
 
@@ -315,9 +347,9 @@ def generate_ec_extracted_report_pdf(ec_data: dict) -> bytes:
     elements.append(Spacer(1, 6))
 
     # Search window advisory note
-    search_period_str = ec_data.get("search_period", "Aug-2004 to Nov-2011")
+    search_period_str = _sanitize_text_for_pdf(ec_data.get("search_period", "Aug-2004 to Nov-2011"))
     callout_data = [[
-        Paragraph(f"<font color='#b91c1c'>■</font> <b>Search-window note:</b> Tamil Nadu title-verification practice generally recommends a minimum 30-year EC search window. This certificate's data-available range ({search_period_str}) is materially shorter than that standard, so ownership history before this window is not covered by this document and should be verified through a separate, earlier-period EC or parent title deeds.", callout_style)
+        Paragraph(f"<b>Search-window note:</b> Tamil Nadu title-verification practice generally recommends a minimum 30-year EC search window. This certificate's data-available range ({search_period_str}) is materially shorter than that standard, so ownership history before this window is not covered by this document and should be verified through a separate, earlier-period EC or parent title deeds.", callout_style)
     ]]
     callout_table = Table(callout_data, colWidths=[523])
     callout_table.setStyle(TableStyle([
@@ -346,32 +378,33 @@ def generate_ec_extracted_report_pdf(ec_data: dict) -> bytes:
         ]
 
     for mf in mortgage_flags:
-        if mf.startswith("[CLOSED]"):
-            mf_html = mf.replace("[CLOSED]", "<font color='#059669'><b>[CLOSED]</b></font>")
-        elif mf.startswith("[OPEN / UNRELEASED]"):
-            mf_html = mf.replace("[OPEN / UNRELEASED]", "<font color='#dc2626'><b>[OPEN / UNRELEASED]</b></font>")
+        san_mf = _sanitize_text_for_pdf(mf)
+        if san_mf.startswith("[CLOSED]"):
+            mf_html = san_mf.replace("[CLOSED]", "<font color='#059669'><b>[CLOSED]</b></font>")
+        elif san_mf.startswith("[OPEN / UNRELEASED]"):
+            mf_html = san_mf.replace("[OPEN / UNRELEASED]", "<font color='#dc2626'><b>[OPEN / UNRELEASED]</b></font>")
         else:
-            mf_html = mf
+            mf_html = san_mf
         elements.append(Paragraph(mf_html, flag_body))
 
     elements.append(Spacer(1, 3))
-    court_text = ec_data.get("court_attachments_text") or "No court attachments, decrees, or lis-pendens entries appear among the registered documents in this search window."
+    court_text = _sanitize_text_for_pdf(ec_data.get("court_attachments_text") or "No court attachments, decrees, or lis-pendens entries appear among the registered documents in this search window.")
     elements.append(Paragraph(court_text, flag_body))
     elements.append(Spacer(1, 3))
-    lease_text = ec_data.get("lease_text") or "One active lease (Doc 2309/2007, rectified by 330/2008) to ICICI Bank Ltd is recorded, term 11-Apr-2010 to 10-Apr-2013 per the rectification."
+    lease_text = _sanitize_text_for_pdf(ec_data.get("lease_text") or "One active lease (Doc 2309/2007, rectified by 330/2008) to ICICI Bank Ltd is recorded, term 11-Apr-2010 to 10-Apr-2013 per the rectification.")
     elements.append(Paragraph(lease_text, flag_body))
     elements.append(Spacer(1, 3))
-    rect_text = ec_data.get("rectification_text") or "Rectification deeds present: 220/2007 (rectifies 205/2007), 330/2008 (rectifies 2309/2007), 414/2013 (rectifies both 1418/2008 and 363/2010, per document remarks), and 1022/2021 (rectifies 1828/2006, per document remarks). These indicate corrections to earlier registered instruments rather than new encumbrances."
+    rect_text = _sanitize_text_for_pdf(ec_data.get("rectification_text") or "Rectification deeds present: 220/2007 (rectifies 205/2007), 330/2008 (rectifies 2309/2007), 414/2013 (rectifies both 1418/2008 and 363/2010, per document remarks), and 1022/2021 (rectifies 1828/2006, per document remarks). These indicate corrections to earlier registered instruments rather than new encumbrances.")
     elements.append(Paragraph(rect_text, flag_body))
 
     # ── PAGES 2 & 3: REGISTERED ENTRIES TABLE ─────────────────────────────
     elements.append(PageBreak())
 
     elements.append(Paragraph("3. Registered Entries (Form 15) — Full Detail", sec_header_style))
-    elements.append(Paragraph(f"All {ec_data.get('total_entries', 35)} entries returned for the search period {ec_data.get('search_period', '29-Aug-2004 to 28-Nov-2011')}, SRO {ec_data.get('sro', 'Adayar')}, Village {ec_data.get('village', 'Adyar')}, Survey {ec_data.get('survey_searched', '5')}.", sec_sub_style))
+    elements.append(Paragraph(f"All {ec_data.get('total_entries', 35)} entries returned for the search period {_sanitize_text_for_pdf(ec_data.get('search_period', '29-Aug-2004 to 28-Nov-2011'))}, SRO {_sanitize_text_for_pdf(ec_data.get('sro', 'Adayar'))}, Village {_sanitize_text_for_pdf(ec_data.get('village', 'Adyar'))}, Survey {_sanitize_text_for_pdf(ec_data.get('survey_searched', '5'))}.", sec_sub_style))
 
-    # Columns: [22, 55, 62, 88, 128, 114, 54] = 523pt printable
-    t_widths = [22, 55, 62, 88, 128, 114, 54]
+    # Columns: [24, 52, 62, 92, 130, 105, 58] = 523pt printable
+    t_widths = [24, 52, 62, 92, 130, 105, 58]
     
     t_rows = [[
         Paragraph("<b>Sr.</b>", th_style),
@@ -380,27 +413,29 @@ def generate_ec_extracted_report_pdf(ec_data: dict) -> bytes:
         Paragraph("<b>Nature</b>", th_style),
         Paragraph("<b>Executant(s)</b>", th_style),
         Paragraph("<b>Claimant(s)</b>", th_style),
-        Paragraph("<b>Consideration</b>", th_style),
+        Paragraph("<b>Consideration Value</b>", th_style),
     ]]
 
     entries = ec_data.get("transactions", [])
     if entries:
         for idx, row in enumerate(entries):
             sr_num = row.get("sr") or (idx + 1)
-            nature_val = row.get("nature", "Conveyance").replace("\n", "<br/>")
+            nature_val = _sanitize_text_for_pdf(row.get("nature", "Conveyance")).replace("\n", "<br/>")
             nature_cell = [Paragraph(nature_val, td_style)]
-            if row.get("nature_note"):
-                nature_cell.append(Spacer(1, 2))
-                nature_cell.append(Paragraph(row["nature_note"].replace("\n", "<br/>"), td_note))
+            
+            note_str = _sanitize_text_for_pdf(row.get("nature_note", ""))
+            if note_str and note_str.strip():
+                nature_cell.append(Spacer(1, 1.5))
+                nature_cell.append(Paragraph(f"<i>{note_str}</i>", td_note))
 
-            execs_val = (row.get("executants") or row.get("parties") or "-").replace("\n", "<br/>")
-            claims_val = (row.get("claimants") or "-").replace("\n", "<br/>")
-            cons_val = str(row.get("consideration") or "-").replace("\n", "<br/>")
+            execs_val = _sanitize_text_for_pdf(row.get("executants") or row.get("parties") or "-").replace("\n", "<br/>")
+            claims_val = _sanitize_text_for_pdf(row.get("claimants") or "-").replace("\n", "<br/>")
+            cons_val = _sanitize_text_for_pdf(str(row.get("consideration") or "-")).replace("\n", "<br/>")
 
             t_rows.append([
                 Paragraph(str(sr_num), td_style),
-                Paragraph(str(row.get("doc_no", "-")), td_bold),
-                Paragraph(str(row.get("date", "-")).replace("\n", "<br/>"), td_style),
+                Paragraph(_sanitize_text_for_pdf(str(row.get("doc_no", "-"))), td_bold),
+                Paragraph(_sanitize_text_for_pdf(str(row.get("date", "-"))).replace("\n", "<br/>"), td_style),
                 nature_cell,
                 Paragraph(execs_val, td_style),
                 Paragraph(claims_val, td_style),
@@ -409,14 +444,14 @@ def generate_ec_extracted_report_pdf(ec_data: dict) -> bytes:
 
         entries_table = Table(t_rows, colWidths=t_widths, repeatRows=1)
         entries_table.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1e293b')),
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#eef2f6')),
             ('ALIGN', (0, 0), (-1, 0), 'LEFT'),
             ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-            ('TOPPADDING', (0, 0), (-1, -1), 3),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
-            ('LEFTPADDING', (0, 0), (-1, -1), 3),
-            ('RIGHTPADDING', (0, 0), (-1, -1), 3),
-            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#e2e8f0')),
+            ('TOPPADDING', (0, 0), (-1, -1), 3.5),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 3.5),
+            ('LEFTPADDING', (0, 0), (-1, -1), 3.5),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 3.5),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#cbd5e1')),
             ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f8fafc')]),
         ]))
         elements.append(entries_table)
@@ -429,15 +464,15 @@ def generate_ec_extracted_report_pdf(ec_data: dict) -> bytes:
     elements.append(Paragraph("4. Caveats — What This EC Does NOT Cover", sec_header_style))
     elements.append(Spacer(1, 4))
 
-    sro_name = ec_data.get("sro", "Adayar")
+    sro_name = _sanitize_text_for_pdf(ec_data.get("sro", "Adayar"))
     caveats = [
-        f"• <b>This certificate reflects only registered documents</b> presented at the {sro_name} SRO within the stated search window. It is not proof of current, unencumbered ownership on its own.",
-        "• <b>Unregistered agreements</b> (e.g. unregistered sale agreements, unregistered leases below the registration threshold, informal family arrangements) will not appear here.",
-        "• <b>Court orders / decrees not yet registered with the SRO</b> — including injunctions, attachments, or succession orders pending registration — are invisible to this search.",
-        "• <b>Property tax dues, utility dues, or statutory charges</b> (e.g. municipal tax arrears) are not tracked by the Registration Department and require a separate check with the local body.",
-        "• <b>Physical possession disputes or adverse possession claims</b> are not recorded in registration data and require a physical inspection and local enquiry.",
-        f"• <b>The search window ({search_period_str}) does not cover the full recommended 30-year history</b>; earlier encumbrances, mortgages, or litigation before this period will not surface in this document.",
-        "• <b>Entries dated after the end of this search window</b> are not included — a fresh EC should be pulled through the present date to confirm no later mortgages, sales, or attachments exist."
+        f"* <b>This certificate reflects only registered documents</b> presented at the {sro_name} SRO within the stated search window. It is not proof of current, unencumbered ownership on its own.",
+        "* <b>Unregistered agreements</b> (e.g. unregistered sale agreements, unregistered leases below the registration threshold, informal family arrangements) will not appear here.",
+        "* <b>Court orders / decrees not yet registered with the SRO</b> - including injunctions, attachments, or succession orders pending registration - are invisible to this search.",
+        "* <b>Property tax dues, utility dues, or statutory charges</b> (e.g. municipal tax arrears) are not tracked by the Registration Department and require a separate check with the local body.",
+        "* <b>Physical possession disputes or adverse possession claims</b> are not recorded in registration data and require a physical inspection and local enquiry.",
+        f"* <b>The search window ({search_period_str}) does not cover the full recommended 30-year history</b>; earlier encumbrances, mortgages, or litigation before this period will not surface in this document.",
+        "* <b>Entries dated after the end of this search window</b> are not included - a fresh EC should be pulled through the present date to confirm no later mortgages, sales, or attachments exist."
     ]
 
     for c in caveats:
@@ -445,7 +480,7 @@ def generate_ec_extracted_report_pdf(ec_data: dict) -> bytes:
 
     elements.append(Spacer(1, 14))
     elements.append(Paragraph(
-        f"Source: Government of Tamil Nadu Registration Department, Certificate of Encumbrance on Property, SRO {sro_name}, issued {ec_data.get('issue_date', '29-Aug-2026')}.<br/>"
+        f"Source: Government of Tamil Nadu Registration Department, Certificate of Encumbrance on Property, SRO {sro_name}, issued {_sanitize_text_for_pdf(ec_data.get('issue_date', '29-Aug-2026'))}.<br/>"
         "Extracted and structured for review purposes; refer to the original certificate for the authoritative record and digital signature validity.",
         footer_p
     ))
@@ -674,8 +709,8 @@ def generate_ocr_pdf_report(data: Dict[str, Any]) -> bytes:
     for k, v in fields.items():
         if k in ["transactions_table", "verification_flags", "checklist"]:
             continue
-        lbl = v.get("label", k.replace("_", " ").title())
-        raw_val = str(v.get("value", "Not Detected")).strip()
+        lbl = _sanitize_text_for_pdf(v.get("label", k.replace("_", " ").title()))
+        raw_val = _sanitize_text_for_pdf(str(v.get("value", "Not Detected")).strip())
         formatted_val = raw_val.replace("\n", "<br/>")
         conf = int(v.get("confidence", 0.95) * 100)
         
@@ -714,9 +749,9 @@ def generate_ocr_pdf_report(data: Dict[str, Any]) -> bytes:
             ]
         ]
         for item in checklist:
-            title = item.get("title", item.get("item", "Check"))
-            status = str(item.get("status", "unknown")).upper()
-            detail = item.get("detail", item.get("details", "-"))
+            title = _sanitize_text_for_pdf(item.get("title", item.get("item", "Check")))
+            status = _sanitize_text_for_pdf(str(item.get("status", "unknown")).upper())
+            detail = _sanitize_text_for_pdf(item.get("detail", item.get("details", "-")))
             
             if status in ["PASS", "PASSED"]:
                 status_html = "<font color='#059669'><b>PASSED</b></font>"

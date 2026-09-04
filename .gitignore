@@ -35,6 +35,10 @@ extracted_en.json
 extracted_ta.json
 tamil_ocr_output.json
 sample_test_land_record.pdf
+test_ec_output.pdf
+test_ec_generated.pdf
+test_chengleput_generated.pdf
+*.pdf
 
 # IDE and OS files
 .idea/

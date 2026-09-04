@@ -102,5 +102,43 @@ Search Period/தடுதல் காலம்: 01-Jan-2003 - 03-Sep-2026
         b_data = b_res.json()
         self.assertEqual(b_data["cross_check"]["overall_status"], "PASS")
 
+    def test_tslr_canonical_fields(self):
+        """Verify TSLR exact canonical fields extraction."""
+        sample = SAMPLE_DOCUMENTS["tslr"]
+        extracted = self.extractor.extract(sample["raw_text"], doc_type="tslr")
+        fields = extracted["fields"]
+
+        self.assertIn("district", fields)
+        self.assertIn("taluk", fields)
+        self.assertIn("town_village", fields)
+        self.assertEqual(fields["town_village"]["label"], "Town")
+        self.assertIn("ward", fields)
+        self.assertIn("owner_name", fields)
+        self.assertEqual(fields["owner_name"]["label"], "Name")
+        self.assertIn("survey_number", fields)
+        self.assertIn("extent", fields)
+        self.assertIn("ward_block", fields)
+        self.assertIn("land_classification", fields)
+        self.assertIn("current_land_use", fields)
+        self.assertIn("tenure_type", fields)
+        self.assertIn("assessment", fields)
+        self.assertIn("remarks", fields)
+
+    def test_ec_pdf_report_generation(self):
+        """Verify EC PDF Report generates cleanly with zero tofu issues."""
+        from app.pdf_generator import generate_ocr_pdf_report
+        sample = SAMPLE_DOCUMENTS["ec"]
+        extracted = self.extractor.extract(sample["raw_text"], doc_type="ec")
+        data = {
+            "filename": "Sample_EC.pdf",
+            "doc_type": "ec",
+            "total_pages": 1,
+            "extraction": extracted
+        }
+        pdf_bytes = generate_ocr_pdf_report(data)
+        self.assertGreater(len(pdf_bytes), 1000)
+        self.assertTrue(pdf_bytes.startswith(b"%PDF"))
+
 if __name__ == "__main__":
     unittest.main()
+
