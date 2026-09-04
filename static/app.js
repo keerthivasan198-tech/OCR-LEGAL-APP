@@ -627,24 +627,24 @@ function renderFieldsTab(fields) {
 
 function renderECFieldsLayout(fields, container) {
     // 1. Safe extraction of field values
-    const sroVal = fields.sro_office ? (fields.sro_office.value || fields.sro_office) : "Adayar (அடையாறு)";
-    const sroJurisdiction = fields.sro_jurisdiction ? (fields.sro_jurisdiction.value || fields.sro_jurisdiction) : `${sroVal} — Chennai South District, Chennai Zone`;
-    const villageVal = fields.village ? (fields.village.value || fields.village) : "Adyar (அடையாறு)";
-    const talukVal = fields.taluk ? (fields.taluk.value || fields.taluk) : "Adayar Taluk / Jurisdiction (அடையாறு வட்டம் / எல்லை)";
-    const districtVal = fields.district ? (fields.district.value || fields.district) : "Chennai South (சென்னை தெற்கு)";
-    const zoneVal = fields.zone ? (fields.zone.value || fields.zone) : "Chennai (சென்னை)";
-    const surveyVal = fields.survey_searched ? (fields.survey_searched.value || fields.survey_searched) : "5";
-    const certDate = fields.certificate_date ? (fields.certificate_date.value || fields.certificate_date) : "29-Aug-2026";
-    const searchPeriod = fields.search_period ? (fields.search_period.value || fields.search_period) : "29-Aug-2004 to 28-Nov-2011";
+    const sroVal = fields.sro_office ? (fields.sro_office.value || fields.sro_office) : "-";
+    const sroJurisdiction = fields.sro_jurisdiction ? (fields.sro_jurisdiction.value || fields.sro_jurisdiction) : (sroVal !== "-" ? `${sroVal}` : "-");
+    const villageVal = fields.village ? (fields.village.value || fields.village) : "-";
+    const talukVal = fields.taluk ? (fields.taluk.value || fields.taluk) : "-";
+    const districtVal = fields.district ? (fields.district.value || fields.district) : "-";
+    const zoneVal = fields.zone ? (fields.zone.value || fields.zone) : "-";
+    const surveyVal = fields.survey_searched ? (fields.survey_searched.value || fields.survey_searched) : "-";
+    const certDate = fields.certificate_date ? (fields.certificate_date.value || fields.certificate_date) : "-";
+    const searchPeriod = fields.search_period ? (fields.search_period.value || fields.search_period) : "-";
     const sroAvail = fields.sro_available_from ? (fields.sro_available_from.value || fields.sro_available_from) : searchPeriod;
     const formTypeObj = fields.form_type || {};
-    const formTypeVal = formTypeObj.value || "Form 15 equivalent — TRANSACTIONS FOUND (35 registered entries)";
-    const totalEntriesVal = fields.total_entries ? (fields.total_entries.value || "35") : "35";
-    const encStatusVal = fields.encumbrance_status ? (fields.encumbrance_status.value || "Encumbered") : "Encumbered";
+    const formTypeVal = formTypeObj.value || (fields.total_entries && parseInt(fields.total_entries.value) > 0 ? `Form 15 — Transactions Found (${fields.total_entries.value} entries)` : "Form 16 Nil — No Encumbrance Recorded");
+    const totalEntriesVal = fields.total_entries ? (fields.total_entries.value || "0") : "0";
+    const encStatusVal = fields.encumbrance_status ? (fields.encumbrance_status.value || "Encumbered") : (parseInt(totalEntriesVal) > 0 ? `Encumbered — ${totalEntriesVal} Registered Transactions Recorded` : "Nil Encumbrance / Clear Title");
 
     // Mortgages
     const mortgageObj = fields.mortgage_status || {};
-    const mortgageVal = mortgageObj.value || "5 Open/Unreleased Mortgages | 1 Closed Mortgage";
+    const mortgageVal = mortgageObj.value || "0 Open/Unreleased Mortgages | 0 Closed Mortgage";
     const mortgageFlags = mortgageObj.flags || (fields.verification_flags && fields.verification_flags.mortgages_flags) || [];
 
     // Court Attachments
@@ -959,7 +959,7 @@ function renderECFieldsLayout(fields, container) {
             </div>
 
             ${transactions.length > 0 ? `
-            <div class="space-y-2 max-h-[500px] overflow-y-auto pr-1">
+            <div class="space-y-2.5 max-h-[560px] overflow-y-auto pr-1">
                 ${transactions.map((tx, idx) => {
                     const srNum = tx.sr || (idx + 1);
                     const nat = tx.nature || "Deed";
@@ -971,20 +971,35 @@ function renderECFieldsLayout(fields, container) {
                     else if (nat.toLowerCase().includes("settlement") || nat.toLowerCase().includes("gift")) natBadge = "bg-purple-100 text-purple-800 border-purple-300";
                     else if (nat.toLowerCase().includes("rectification")) natBadge = "bg-slate-100 text-slate-800 border-slate-300";
 
+                    const execDate = (tx.execution_date && tx.execution_date.standard) ? tx.execution_date.standard : (tx.date || "-");
+                    const presDate = (tx.presentation_date && tx.presentation_date.standard) ? tx.presentation_date.standard : execDate;
+                    const regDate = (tx.registration_date && tx.registration_date.standard) ? tx.registration_date.standard : execDate;
+                    const schedules = tx.schedules || [];
+
                     return `
-                    <div class="p-3 rounded-xl bg-white border border-slate-200/90 shadow-2xs hover:border-blue-300 transition-colors text-xs space-y-1.5">
+                    <div class="p-3.5 rounded-xl bg-white border border-slate-200/90 shadow-2xs hover:border-blue-300 transition-colors text-xs space-y-2">
                         <div class="flex items-start justify-between gap-2">
                             <div class="flex items-center gap-2">
-                                <span class="w-5 h-5 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center font-bold text-[10px]">${srNum}</span>
+                                <span class="w-5 h-5 rounded-full bg-slate-100 text-slate-700 flex items-center justify-center font-bold text-[10px]">${srNum}</span>
                                 <span class="font-extrabold text-blue-700 font-mono text-xs">Doc ${escapeHtml(tx.doc_no || "-")}</span>
-                                <span class="text-slate-400 font-mono text-[11px]">Date: ${escapeHtml(tx.date || "-")}</span>
+                                <span class="text-slate-500 font-mono text-[11px]">Reg: ${escapeHtml(regDate)}</span>
                             </div>
                             <span class="px-2 py-0.5 rounded text-[10px] font-bold border ${natBadge}">
                                 ${escapeHtml(nat.split('\n')[0])}
                             </span>
                         </div>
 
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-2 text-[11px] bg-slate-50/80 p-2 rounded-lg border border-slate-200/60">
+                        <!-- 3 Dates Pipeline -->
+                        <div class="flex items-center gap-3 text-[10px] font-mono text-slate-500 bg-slate-50 px-2 py-1 rounded border border-slate-200/50">
+                            <span><b>Execution:</b> ${escapeHtml(execDate)}</span>
+                            <span>•</span>
+                            <span><b>Presentation:</b> ${escapeHtml(presDate)}</span>
+                            <span>•</span>
+                            <span><b>Registration:</b> ${escapeHtml(regDate)}</span>
+                        </div>
+
+                        <!-- Executants & Claimants -->
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-2 text-[11px] bg-slate-50/80 p-2.5 rounded-lg border border-slate-200/60">
                             <div>
                                 <span class="text-slate-400 font-semibold block text-[10px]">Executant(s):</span>
                                 <span class="text-slate-800 font-medium whitespace-pre-line">${escapeHtml(tx.executants || tx.parties || "-")}</span>
@@ -995,10 +1010,46 @@ function renderECFieldsLayout(fields, container) {
                             </div>
                         </div>
 
-                        <div class="flex items-center justify-between text-[11px] pt-0.5">
-                            <span class="text-slate-500">SRO: <b class="text-slate-700">${escapeHtml(sroVal)}</b></span>
-                            <span class="text-slate-700">Consideration: <b class="text-emerald-700 font-mono">${escapeHtml(tx.consideration || "-")}</b></span>
+                        <!-- Financial & PR Linkage -->
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-2 text-[11px] bg-emerald-50/30 p-2 rounded-lg border border-emerald-100">
+                            <div>
+                                <span class="text-slate-500 text-[10px] block">Consideration:</span>
+                                <b class="text-emerald-800 font-mono">${escapeHtml(tx.consideration || "-")}</b>
+                            </div>
+                            <div>
+                                <span class="text-slate-500 text-[10px] block">Market Value:</span>
+                                <b class="text-slate-700 font-mono">${escapeHtml(tx.market_value || "-")}</b>
+                            </div>
+                            <div>
+                                <span class="text-slate-500 text-[10px] block">PR Number:</span>
+                                <b class="text-indigo-700 font-mono">${escapeHtml(tx.pr_number || "-")}</b>
+                            </div>
                         </div>
+
+                        <!-- Schedule Property Sub-blocks (Step 6) -->
+                        ${schedules.length > 0 ? `
+                        <div class="space-y-1 pt-1">
+                            <span class="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Schedule Property Details (${schedules.length} block${schedules.length > 1 ? 's' : ''}):</span>
+                            ${schedules.map(sch => `
+                            <div class="p-2 bg-blue-50/40 rounded-lg border border-blue-100/80 text-[11px] space-y-1">
+                                <div class="flex items-center justify-between font-bold text-blue-900 text-[11px]">
+                                    <span>${escapeHtml(sch.schedule_name || "Schedule Details")}</span>
+                                    <span class="px-1.5 py-0.2 bg-blue-100 text-blue-800 rounded text-[9px] font-extrabold">${escapeHtml(sch.property_type || "House Site")}</span>
+                                </div>
+                                <div class="grid grid-cols-2 md:grid-cols-3 gap-1 text-[10px] text-slate-600">
+                                    <span><b>Extent:</b> ${escapeHtml(sch.extent || "-")}</span>
+                                    <span><b>Survey:</b> ${escapeHtml(sch.survey_no || "-")}</span>
+                                    <span><b>Plot:</b> ${escapeHtml(sch.plot_no || "-")}</span>
+                                </div>
+                                ${sch.boundaries && sch.boundaries !== '-' ? `
+                                <div class="text-[10px] text-slate-700 bg-white/80 p-1.5 rounded border border-blue-100/60 leading-tight">
+                                    <b class="text-slate-900">Boundaries:</b> ${escapeHtml(sch.boundaries)}
+                                </div>
+                                ` : ''}
+                            </div>
+                            `).join('')}
+                        </div>
+                        ` : ''}
 
                         ${tx.nature_note ? `<div class="text-[10px] text-amber-700 bg-amber-50/60 px-2 py-1 rounded border border-amber-200/60 italic">${escapeHtml(tx.nature_note)}</div>` : ''}
                     </div>
@@ -1030,39 +1081,40 @@ function renderTSLRFieldsLayout(fields, container) {
     };
 
     // Header block (Step 2)
-    const districtVal = getVal(fields.district, "Chennai (சென்னை)");
-    const talukVal = getVal(fields.taluk, "Ayanavaram (அயனாவரம்)");
-    const townVal = getVal(fields.town_village, "Villivakkam (வில்லிவாக்கம்)");
-    const wardVal = getVal(fields.ward, "001");
-    const wardBlockVal = getVal(fields.ward_block, "Ward 001, Block 0003");
+    const districtVal = getVal(fields.district, "-");
+    const talukVal = getVal(fields.taluk, "-");
+    const townVal = getVal(fields.town_village, "-");
+    const wardVal = getVal(fields.ward, "-");
+    const wardBlockVal = getVal(fields.ward_block, "-");
 
     // Table rows (Steps 3 & 4)
-    const serialVal = getVal(fields.serial_no, "1");
-    const ownerVal = getVal(fields.owner_name, "K. Sukumar (கே. சுகுமார்)");
-    const surveyVal = getVal(fields.survey_number, "35/2");
-    const oldSurveyVal = getVal(fields.old_survey_number, "249/3A1A3 pt -");
+    const serialVal = getVal(fields.serial_no, "-");
+    const ownerVal = getVal(fields.owner_name, "-");
+    const surveyVal = getVal(fields.survey_number, "-");
+    const oldSurveyVal = getVal(fields.old_survey_number, "-");
     const doorVal = getVal(fields.municipal_door_no, "Not Recorded (-)");
-    const extentVal = getVal(fields.extent, "1 Are(s), 73.5 Sq.Meter(s)");
-    const landClassVal = getVal(fields.land_classification, "House-site (Manai) (குடியிருப்பு மனை)");
-    const landUseVal = getVal(fields.current_land_use, "Building --> Non-agricultural (கட்டிடம் / விவசாயமற்ற பயன்பாடு)");
-    const tenureVal = getVal(fields.tenure_type, "Ryotwari (ரயத்துவாரி - நேரடி பட்டா உரிமை)");
-    const assessVal = getVal(fields.assessment, "Municipal=-, Govt=10.00");
+    const extentVal = getVal(fields.extent, "-");
+    const landClassVal = getVal(fields.land_classification, "-");
+    const landUseVal = getVal(fields.current_land_use, "-");
+    const tenureVal = getVal(fields.tenure_type, "-");
+    const assessVal = getVal(fields.assessment, "-");
     const muniRegVal = getVal(fields.municipal_register, "Not Recorded (-)");
-    const remarksVal = getVal(fields.remarks, "2023/0153/02/047290TR DT. 2023-11-30 TR DT: 18-12-2025");
+    const remarksVal = getVal(fields.remarks, "-");
 
     // Digital signature & provenance (Step 7)
-    const tahsildarVal = getVal(fields.tahsildar_signatory, "Kalpana C.M. (Tahsildar, Ayanavaram Taluk, Chennai District)");
-    const sigDateVal = getVal(fields.digital_signature_date, "18-12-2025");
-    const refNoVal = getVal(fields.eservices_ref_no, "URB/02/04/001/001/0003/35/2");
-    const printDateVal = getVal(fields.certificate_print_date, "13-08-2026 at 04:50:41 PM");
-    const portalVal = getVal(fields.portal_verification, "https://eservices.tn.gov.in (2D Barcode & Digital Registry Validated)");
-    const pageAuditVal = getVal(fields.page_audit, "2 Pages Total — Page 2 Survey Field-Map sketch verified (Reference: W9arpBWxOja8…)");
+    const tahsildarVal = getVal(fields.tahsildar_signatory, "-");
+    const sigDateVal = getVal(fields.digital_signature_date, "-");
+    const refNoVal = getVal(fields.eservices_ref_no, "-");
+    const printDateVal = getVal(fields.certificate_print_date, "-");
+    const portalVal = getVal(fields.portal_verification, "https://eservices.tn.gov.in");
+    const pageAuditVal = getVal(fields.page_audit, "-");
+    const fmbWarningVal = getVal(fields.fmb_warning, null);
 
     // Extent metrics
     const extentObj = fields.extent || {};
-    const totalSqm = extentObj.total_sq_meters || "173.5";
-    const totalSqft = extentObj.total_sq_ft ? extentObj.total_sq_ft.toLocaleString() : "1,867.5";
-    const grounds = extentObj.grounds || "0.78";
+    const totalSqm = extentObj.total_sq_meters || (extentVal !== "-" ? "-" : "-");
+    const totalSqft = extentObj.total_sq_ft ? extentObj.total_sq_ft.toLocaleString() : "-";
+    const grounds = extentObj.grounds || "-";
 
     function makeRow(key, labelEn, labelTa, val, conf, note = "") {
         return `
@@ -1103,9 +1155,29 @@ function renderTSLRFieldsLayout(fields, container) {
             </div>
             <div class="flex items-center gap-2 text-xs font-mono">
                 <span class="px-2.5 py-1 rounded bg-slate-800 text-slate-200 border border-slate-700">T.S. No: <b>${escapeHtml(surveyVal)}</b></span>
-                <span class="px-2.5 py-1 rounded bg-slate-800 text-emerald-400 border border-slate-700">Ryotwari Title</span>
+                <span class="px-2.5 py-1 rounded bg-slate-800 text-emerald-400 border border-slate-700">${tenureVal.includes('Ryotwari') ? 'Ryotwari Title' : 'Urban Land Record'}</span>
             </div>
         </div>
+
+        <!-- FMB MAP RECONCILIATION WARNING (STEP 8) -->
+        ${(fmbWarningVal || (pageAuditVal && pageAuditVal.toLowerCase().includes("not found"))) ? `
+        <div class="p-3.5 rounded-xl bg-amber-500/10 border-2 border-amber-300 text-amber-900 shadow-2xs">
+            <div class="flex items-start gap-2.5">
+                <div class="p-2 rounded-lg bg-amber-200/80 text-amber-900 shrink-0 mt-0.5">
+                    <i data-lucide="alert-triangle" class="w-4 h-4"></i>
+                </div>
+                <div>
+                    <div class="flex items-center gap-2 mb-1">
+                        <span class="text-xs font-extrabold uppercase tracking-wide text-amber-950">FMB Survey Sketch Alert</span>
+                        <span class="px-1.5 py-0.2 rounded bg-amber-200 text-amber-900 text-[10px] font-bold">Cross-Doc Verification</span>
+                    </div>
+                    <p class="text-[11px] text-amber-900/90 leading-relaxed font-medium">
+                        ${escapeHtml(fmbWarningVal || "FMB Survey Sketch missing on eServices portal (The requested map is not found). Land boundaries must be verified physically via sub-division survey sketch.")}
+                    </p>
+                </div>
+            </div>
+        </div>
+        ` : ''}
 
         <!-- 1. ADMINISTRATIVE JURISDICTION (STEP 2) -->
         <div class="rounded-xl bg-white border border-slate-200 shadow-2xs overflow-hidden">

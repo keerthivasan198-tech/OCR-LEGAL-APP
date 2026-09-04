@@ -90,11 +90,13 @@ CANONICAL_PLACES = {
     "தென்காசி": "Tenkasi", "tenkasi": "தென்காசி",
     "கன்னியாகுமரி": "Kanyakumari", "kanyakumari": "கன்னியாகுமரி",
     "கள்ளக்குறிச்சி": "Kallakurichi", "kallakurichi": "கள்ளக்குறிச்சி",
-    "செங்கல்பட்டு": "Chengalpattu", "chengalpattu": "செங்கல்பட்டு",
+    "செங்கல்பட்டு": "Chengalpattu", "chengalpattu": "செங்கல்பட்டு", "chengleput": "செங்கல்பட்டு",
+    "chengleput joint i": "செங்கல்பட்டு இணை I", "chengleput joint 1": "செங்கல்பட்டு இணை I", "chengleput joint": "செங்கல்பட்டு இணை",
     "மயிலாடுதுறை": "Mayiladuthurai", "mayiladuthurai": "மயிலாடுதுறை",
 
     # Taluks
     "திண்டிவனம்": "Tindivanam", "tindivanam": "திண்டிவனம்",
+    "செங்கல்பட்டு": "Chengalpattu", "chengalpattu": "செங்கல்பட்டு",
     "பட்டுக்கோட்டை": "Pattukkottai", "pattukkottai": "பட்டுக்கோட்டை",
     "நன்னிலம்": "Nannilam", "nannilam": "நன்னிலம்", "நள்aிலம்": "நன்னிலம்", "நளகாலம்": "நன்னிலம்",
     "கோபிசெட்டிபாளையம்": "Gobichettipalayam", "gobichettipalayam": "கோபிசெட்டிபாளையம்",
@@ -112,6 +114,7 @@ CANONICAL_PLACES = {
     "சூலூர்": "Sulur", "sulur": "சூலூர்",
 
     # Villages
+    "அலப்பாக்கம்": "Alappakkam", "alappakkam": "அலப்பாக்கம்",
     "வடமங்கலம்": "Vadamangalam", "vadamangalam": "வடமங்கலம்",
     "கீழையூர்": "Keezhaiyur", "keezhaiyur": "கீழையூர்",
     "சித்தோடு": "Chithode", "chithode": "சித்தோடு",

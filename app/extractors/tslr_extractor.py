@@ -37,10 +37,28 @@ from app.translator import (
 
 
 class TSLRExtractor:
-    """Production TSLR Extractor — fully dynamic, zero hardcoded values."""
+    """Production 9-Step TSLR Extractor — fully dynamic, zero hardcoded values."""
 
     def __init__(self):
-        pass
+        self.TAMIL_INITIALS = {
+            'கே': 'K.', 'எஸ்': 'S.', 'எம்': 'M.', 'ஆர்': 'R.', 'பி': 'P.',
+            'டி': 'D.', 'என்': 'N.', 'வி': 'V.', 'ஏ': 'A.', 'சி': 'C.',
+            'ஜெ': 'J.', 'கோ': 'G.', 'தீ': 'T.', 'தி': 'T.', 'அ': 'A.',
+        }
+        self.CADASTRAL_TERMS = {
+            "house_site": "House-site (Manai) (குடியிருப்பு மனை)",
+            "ryotwari": "Ryotwari (ரயத்துவாரி - நேரடி பட்டா உரிமை)",
+            "building": "Building --> Non-agricultural (கட்டிடம் / விவசாயமற்ற பயன்பாடு)",
+            "poramboke": "Government Poramboke (புறம்போக்கு)",
+            "wet_land": "Wet Land (Nanjai) (நஞ்சை)",
+            "dry_land": "Dry Land (Punjai) (புஞ்சை)",
+            "vacant": "Vacant Site (காலி மனை)",
+            "canal": "Canal / Waterway (காலவாய்)",
+            "commercial": "Commercial (வணிக பயன்பாடு)",
+            "inam": "Inam (இனாம்)",
+            "mitta": "Mitta (மிட்டா)",
+            "zamindari": "Zamindari (ஜமீன்தாரி)",
+        }
 
     # ── Utility Methods ──────────────────────────────────────────────────
 
@@ -54,7 +72,7 @@ class TSLRExtractor:
 
     @staticmethod
     def _clean_ocr_tamil(s: str) -> str:
-        """Repairs common OCR ligature, font-mapping, and joiner splits in Tamil text."""
+        """Repairs common OCR ligature, font-mapping, and joiner splits in Tamil text (Step 9)."""
         if not s:
             return ""
 
@@ -91,15 +109,29 @@ class TSLRExtractor:
             ('உடப் *ர', 'உட்பிரிவு'), ('உடப் &ர', 'உட்பிரிவு'),
             ('2ன சிபல்', 'முனிசிபல்'),
             ('அசச் (டபப் டட்', 'அச்சடிக்கப்பட்ட'),
+            ('அச்சடிச் க்கப்பட்டட் து', 'அச்சடிக்கப்பட்டது'),
             ('சரிபார்க்ர் க்கவும்', 'சரிபார்க்கவும்'),
             ('வட்டாட் டாட்சிட் யர்', 'வட்டாட்சியர்'),
             ('உள்ளீடுளீ', 'உள்ளீடு'),
             ('கை யொப்பம்', 'கையொப்பம்'),
             ('இணை ய சே வை', 'இணைய சேவை'),
             ('நி ல உரிமை', 'நில உரிமை'),
+            ('விபரங்கள்', 'விவரங்கள்'),
         ]
         for old, new in replacements:
             s = s.replace(old, new)
+
+        # 5. Regex-level cleanups for repeated pullis and broken words
+        s = re.sub(r'வட்ட[்ட்\s]+ம்', 'வட்டம்', s)
+        s = re.sub(r'மாவட்ட[்ட்\s]+ம்', 'மாவட்டம்', s)
+        s = re.sub(r'கட்டிட[்ட்\s]+ம்', 'கட்டிடம்', s)
+        s = re.sub(r'ரயத்து[த்\s]+வாரி', 'ரயத்துவாரி', s)
+        s = re.sub(r'அச்சடி[ச்\s]+க்கப்ப[ட்\s]+து', 'அச்சடிக்கப்பட்டது', s)
+        s = re.sub(r'வட்டா[ட்\s]+டாட்சி[ட்\s]+யர்', 'வட்டாட்சியர்', s)
+        s = re.sub(r'இணை[ ]+ய', 'இணைய', s)
+        s = re.sub(r'சே[ ]+வை', 'சேவை', s)
+        s = re.sub(r'நி[ ]+ல', 'நில', s)
+
         return s
 
     @staticmethod
@@ -123,33 +155,90 @@ class TSLRExtractor:
         result.update(kwargs)
         return result
 
-    def _format_owner_name(self, raw: str) -> str:
-        """Format owner name from raw text — bilingual if possible."""
+    def _resolve_bilingual_name(self, raw: str, full_text: str = "") -> Dict[str, Any]:
+        """
+        STEP 6: Bilingual name/place resolution with source tracking.
+        Checks for printed Latin-script form in doc first, else transliterates.
+        Returns: { "en": "...", "ta": "...", "source": "printed" | "transliterated", "formatted": "English (Tamil)", "confidence": float }
+        """
         if not raw:
-            return ""
-
-        # Check for "English (Tamil: தமிழ்)" format
-        m_paren = re.search(r'([^(]+?)\s*\((?:Tamil\s*:\s*)?([^)]+)\)', raw, re.IGNORECASE)
-        if m_paren:
-            en_cand = self._clean(m_paren.group(1))
-            ta_cand = self._clean(m_paren.group(2))
-            en_clean = re.sub(r'^\d+\.\s*', '', en_cand).strip()
-            return f"{en_clean} ({ta_cand})"
+            return {"en": "", "ta": "", "source": "none", "formatted": "", "confidence": 0.0}
 
         clean = re.sub(r'^\d+\.\s*', '', raw).strip()
+        clean = re.sub(r'\s+', ' ', clean)
+
+        # 1. Check if dual scripted in cell itself e.g. "K. Sukumar (கே.சுகுமார்)"
+        m_paren = re.search(r'([^(]+?)\s*\((?:Tamil\s*:\s*)?([^)]+)\)', clean, re.IGNORECASE)
+        if m_paren:
+            en_part = self._clean(m_paren.group(1))
+            ta_part = self._clean(m_paren.group(2))
+            return {
+                "en": en_part,
+                "ta": ta_part,
+                "source": "printed",
+                "formatted": f"{en_part} ({ta_part})",
+                "confidence": 0.98
+            }
+
         has_tamil = any('\u0b80' <= c <= '\u0bff' for c in clean)
         has_english = any('a' <= c.lower() <= 'z' for c in clean)
 
         if has_tamil and not has_english:
-            en_trans = dynamic_transliterate_tamil(clean)
-            return f"{en_trans} ({clean})"
+            ta_name = clean
+            en_name = None
+            source = "transliterated"
+            conf = 0.92
+
+            # Check initial pattern e.g. கே. சுகுமார் or கே.சுகுமார்
+            m_init = re.match(r'^([\u0b80-\u0bff]+)[\.\s]+([\u0b80-\u0bff\s]+)$', ta_name)
+            if m_init:
+                init_ta = m_init.group(1).strip()
+                rest_ta = m_init.group(2).strip()
+                init_en = self.TAMIL_INITIALS.get(init_ta, "")
+                rest_en = COMMON_NAMES.get(rest_ta.lower(), dynamic_transliterate_tamil(rest_ta))
+                if init_en:
+                    en_name = f"{init_en} {rest_en}"
+                else:
+                    en_name = f"{dynamic_transliterate_tamil(init_ta)}. {rest_en}"
+            else:
+                en_name = COMMON_NAMES.get(ta_name.lower(), dynamic_transliterate_tamil(ta_name))
+
+            # Check if matching Latin form printed in document
+            name_tokens = [w for w in en_name.split() if len(w) > 2]
+            for tok in name_tokens:
+                if full_text and tok.lower() in full_text.lower():
+                    m_lat = re.search(rf'\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\b', full_text)
+                    if m_lat and tok.lower() in m_lat.group(1).lower():
+                        en_name = m_lat.group(1).strip()
+                        source = "printed"
+                        conf = 0.98
+                        break
+
+            return {
+                "en": en_name,
+                "ta": ta_name,
+                "source": source,
+                "formatted": f"{en_name} ({ta_name})",
+                "confidence": conf
+            }
         elif has_english and not has_tamil:
-            ta_trans = dynamic_english_to_tamil(clean)
-            return f"{clean} ({ta_trans})" if ta_trans != clean else clean
-        elif has_tamil and has_english:
-            return clean
+            en_name = clean
+            ta_name = dynamic_english_to_tamil(en_name)
+            return {
+                "en": en_name,
+                "ta": ta_name,
+                "source": "printed",
+                "formatted": f"{en_name} ({ta_name})" if ta_name != en_name else en_name,
+                "confidence": 0.96
+            }
         else:
-            return clean
+            return {
+                "en": clean,
+                "ta": clean,
+                "source": "printed",
+                "formatted": clean,
+                "confidence": 0.95
+            }
 
     def _parse_extent(self, extent_str: str) -> Dict[str, Any]:
         """Parse extent values and compute area conversions."""
@@ -516,7 +605,8 @@ class TSLRExtractor:
                             owner_name_raw = cand
                             break
 
-        formatted_owner = self._format_owner_name(owner_name_raw) if owner_name_raw else None
+        owner_obj = self._resolve_bilingual_name(owner_name_raw, clean_text) if owner_name_raw else None
+        formatted_owner = owner_obj["formatted"] if owner_obj else None
 
         # Remarks / Mutation Reference
         rem_m = re.search(r'((?:TEST|\d{4})/\d+/\d+/\d+TR[^\n\r]*(?:\n[^\n\r]+)*)', clean_text)
@@ -560,10 +650,15 @@ class TSLRExtractor:
         fields["municipal_door_no"] = self._make_field("Not Recorded (-)", "Municipal Door No. (நகராட்சி கதவு எண்)", 0.90)
 
         fields["owner_name"] = (
-            self._make_field(formatted_owner, "Name (உரிமையாளர் பெயர் / Adangal Holder)", 0.97,
-                             raw_value=owner_name_raw or "",
-                             box_query=owner_name_raw[:10] if owner_name_raw else "",
-                             anchor_keywords=["adangal", "name", "பெயர்"])
+            self._make_field(
+                formatted_owner, "Name (உரிமையாளர் பெயர் / Adangal Holder)",
+                owner_obj.get("confidence", 0.95) if owner_obj else 0.95,
+                raw_value=owner_name_raw or "",
+                bilingual_details=owner_obj,
+                source=owner_obj.get("source", "transliterated") if owner_obj else "none",
+                box_query=owner_name_raw[:10] if owner_name_raw else "",
+                anchor_keywords=["adangal", "name", "பெயர்"]
+            )
             if formatted_owner else self._not_found("Name (உரிமையாளர் பெயர் / Adangal Holder)")
         )
 
@@ -617,27 +712,39 @@ class TSLRExtractor:
             if remarks_val else self._not_found("Remarks (குறிப்புகள் / மாறுதல் உத்தரவு)")
         )
 
-        # ── STEP 8: Multi-page & Map Check ───────────────────────────────
+        # ── STEP 8: Multi-Page & FMB Map Reconciliation ───────────────────
         total_p = len(pages) if pages else 1
         p2_sketch_status = None
+        fmb_warning = None
+
+        if "requested map is not found" in clean_text.lower() or "map is not found" in clean_text.lower():
+            fmb_warning = "FMB Survey Sketch missing on eServices portal (The requested map is not found). Land boundaries must be verified physically via sub-division survey sketch."
+            p2_sketch_status = "Page 2 Field Map Sketch: Not found on portal (The requested map is not found)"
 
         if pages and len(pages) > 1:
-            p2_text = pages[1].get("full_text", "")
-            if p2_text.strip():
-                if "not found" in p2_text.lower() or "error" in p2_text.lower():
-                    p2_sketch_status = "Page 2 Field Map Sketch: Not found on portal"
-                else:
-                    ref_m = re.search(r'([A-Za-z0-9]{8,})', p2_text)
+            total_p = len(pages)
+            for p_idx, p_obj in enumerate(pages[1:], start=2):
+                p_text = p_obj.get("full_text", "")
+                if "not found" in p_text.lower() or "error" in p_text.lower() or "map is not found" in p_text.lower():
+                    fmb_warning = "FMB Survey Sketch missing on eServices portal (The requested map is not found). Land boundaries must be verified physically via sub-division survey sketch."
+                    p2_sketch_status = f"Page {p_idx} Field Map Sketch: Not found on portal (The requested map is not found)"
+                elif not p2_sketch_status and p_text.strip():
+                    ref_m = re.search(r'([A-Za-z0-9]{8,})', p_text)
                     ref_id = ref_m.group(1)[:12] + "…" if ref_m else "present"
-                    p2_sketch_status = f"Page 2 Survey Field-Map sketch verified (Reference: {ref_id})"
-            else:
-                p2_sketch_status = "Page 2 present but no text content detected"
+                    p2_sketch_status = f"Page {p_idx} Survey Field-Map sketch verified (Reference: {ref_id})"
 
         page_audit_val = f"{total_p} Pages Total"
         if p2_sketch_status:
             page_audit_val = f"{page_audit_val} — {p2_sketch_status}"
 
         fields["page_audit"] = self._make_field(page_audit_val, "Multi-Page & Survey Map Audit (பக்க & வரைபட சரிபார்ப்பு)", 0.99)
+        if fmb_warning:
+            fields["fmb_warning"] = {
+                "value": fmb_warning,
+                "status": "WARNING",
+                "label": "FMB Field Map Survey Warning (புல வரைபட எச்சரிக்கை)",
+                "confidence": 0.99
+            }
 
         # ── Verification Checklist ───────────────────────────────────────
         owner_display = formatted_owner or "Not Found"

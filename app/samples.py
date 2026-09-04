@@ -348,22 +348,85 @@ Prior Encumbrance Check: Mortgage discharged via NOC Doc 640/2018 in year 2018."
     },
     "ec": {
         "title": "EC",
-        "raw_text": """ENCUMBRANCE CERTIFICATE (வில்லங்கச் சான்றிதழ்)
-GOVERNMENT OF TAMIL NADU - REGISTRATION DEPARTMENT
-FORM NO. 15
+        "raw_text": """GOVERNMENT OF TAMILNADU
+REGISTRATION DEPARTMENT
+தமிழ்நாடு அரசு
+பதிவுத்துறை
+Certificate of Encumbrance on Property
+சொத்து தொடர்பான வில்லங்கச் சான்று
+S.R.O /சா.ப.அ: Velachery Date / நாள்: 29-Aug-2026
+Village /கிராமம்: Velachery Survey Details /சர்வே விவரம்: 142/2A
+Data Availability Period for Village: Velachery
+Velachery Sub Registrar Office: From 01-Jan-1990 To 17-Oct-2023
+Search Period /தேடுதல் காலம்: 01-Jan-1990 - 17-Oct-2023
 
-Search Period: 01-01-1990 to 17-10-2023 (33 Years Search - Min 30 Yrs Compliant)
-Form Type: Form 15 (Registered Transactions Recorded)
-Village & Survey: Velachery Village | T.S. No. 142/2A
-SRO Office: Sub-Registrar Office Velachery, Chennai South
+1820/2008
+24-Mar-2008
+24-Mar-2008
+24-Mar-2008
+Conveyance Metro/UA
+1. Classic Foundations Pvt Ltd
+1. K. Rajendran
+Consideration Value/கைமாற்றுத் தொகை: Rs. 32,00,000/-
+Market Value/சந்தை மதிப்பு: Rs. 32,00,000/-
+PR Number/முந்தைய ஆவண எண்: 450/1995
+Schedule A Details:
+Property Type/சொத்தின் வகைப்பாடு: Flat / Apartment
+Property Extent/சொத்தின் விஸ்தீர்ணம்: 1250 Sq.Ft (UDS: 480 Sq.Ft)
+Village & Street/கிராமம் மற்றும் தெரு: Velachery, Main Road Survey No./புல எண் : 142/2A
+Flat No./அடுக்குமாடிக் குடியிருப்பு எண்: 3B
+Boundary Details: வடக்கில் 30 அடி சாலை, தெற்கில் மனை எண் 29, கிழக்கில் மனை எண் 27, மேற்கில் 40 அடி மெயின் ரோடு
 
-REGISTERED ENTRIES TABLE:
-1. Doc 1820/2008 | 24-03-2008 | Sale Deed | Classic Foundations -> K. Rajendran | Rs. 32,00,000/-
-2. Doc 2910/2012 | 15-06-2012 | MODT (Mortgage) | K. Rajendran -> State Bank of India | Rs. 25,00,000/-
-3. Doc 640/2018  | 10-02-2018 | Discharge Receipt | State Bank of India -> K. Rajendran | Mortgage Cleared
-4. Doc 4521/2023 | 14-09-2023 | Sale Deed | K. Rajendran -> S. Lakshmi Priya | Rs. 75,00,000/-
+2910/2012
+15-Jun-2012
+15-Jun-2012
+15-Jun-2012
+MODT / Deposit of Title Deeds
+1. K. Rajendran
+1. State Bank of India
+Consideration Value/கைமாற்றுத் தொகை: Rs. 25,00,000/-
+Market Value/சந்தை மதிப்பு: Rs. 25,00,000/-
+PR Number/முந்தைய ஆவண எண்: 1820/2008
+Schedule A Details:
+Property Type/சொத்தின் வகைப்பாடு: Flat / Apartment
+Property Extent/சொத்தின் விஸ்தீர்ணம்: 1250 Sq.Ft (UDS: 480 Sq.Ft)
+Village & Street/கிராமம் மற்றும் தெரு: Velachery, Main Road Survey No./புல எண் : 142/2A
+Flat No./அடுக்குமாடிக் குடியிருப்பு எண்: 3B
+Boundary Details: வடக்கில் 30 அடி சாலை, தெற்கில் மனை எண் 29, கிழக்கில் மனை எண் 27, மேற்கில் 40 அடி மெயின் ரோடு
 
-Encumbrance Status: CLEAR (All Prior Mortgages Satisfied & Discharged).""",
+640/2018
+10-Feb-2018
+10-Feb-2018
+10-Feb-2018
+Receipt / Mortgage Discharge
+1. State Bank of India
+1. K. Rajendran
+Consideration Value/கைமாற்றுத் தொகை: Rs. 25,00,000/-
+Market Value/சந்தை மதிப்பு: -
+PR Number/முந்தைய ஆவண எண்: 2910/2012
+Schedule A Details:
+Property Type/சொத்தின் வகைப்பாடு: Flat / Apartment
+Property Extent/சொத்தின் விஸ்தீர்ணம்: 1250 Sq.Ft (UDS: 480 Sq.Ft)
+Village & Street/கிராமம் மற்றும் தெரு: Velachery, Main Road Survey No./புல எண் : 142/2A
+Flat No./அடுக்குமாடிக் குடியிருப்பு எண்: 3B
+Boundary Details: வடக்கில் 30 அடி சாலை, தெற்கில் மனை எண் 29, கிழக்கில் மனை எண் 27, மேற்கில் 40 அடி மெயின் ரோடு
+
+4521/2023
+14-Sep-2023
+14-Sep-2023
+14-Sep-2023
+Conveyance Metro/UA
+1. K. Rajendran
+1. S. Lakshmi Priya
+Consideration Value/கைமாற்றுத் தொகை: Rs. 75,00,000/-
+Market Value/சந்தை மதிப்பு: Rs. 75,00,000/-
+PR Number/முந்தைய ஆவண எண்: 1820/2008
+Schedule A Details:
+Property Type/சொத்தின் வகைப்பாடு: Flat / Apartment
+Property Extent/சொத்தின் விஸ்தீர்ணம்: 1250 Sq.Ft (UDS: 480 Sq.Ft)
+Village & Street/கிராமம் மற்றும் தெரு: Velachery, Main Road Survey No./புல எண் : 142/2A
+Flat No./அடுக்குமாடிக் குடியிருப்பு எண்: 3B
+Boundary Details: வடக்கில் 30 அடி சாலை, தெற்கில் மனை எண் 29, கிழக்கில் மனை எண் 27, மேற்கில் 40 அடி மெயின் ரோடு""",
         "structured": {
             "document_type": "EC",
             "search_period": {

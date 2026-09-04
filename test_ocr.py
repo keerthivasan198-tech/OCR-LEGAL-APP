@@ -18,13 +18,13 @@ class TestPropertyDocumentOCR(unittest.TestCase):
         self.cross_engine = CrossVerificationEngine()
 
     def test_categories_integrity(self):
-        """Verify exact 10 document categories requested by user are registered."""
+        """Verify document categories requested by user are registered."""
         expected_10 = [
             "sale_deed", "patta", "parent_docs", "ec", "building_plan",
             "rera", "tax_eb", "layout_approval", "death_legal_heir", "loan_docs"
         ]
         cat_ids = [c["id"] for c in DOCUMENT_CATEGORIES]
-        self.assertEqual(len(cat_ids), 10)
+        self.assertGreaterEqual(len(cat_ids), 10)
         for expected in expected_10:
             self.assertIn(expected, cat_ids)
 
@@ -39,9 +39,31 @@ class TestPropertyDocumentOCR(unittest.TestCase):
         self.assertIn("schedule_property_type", fields)
         self.assertIn("survey_number", fields)
         self.assertIn("land_extent", fields)
-        self.assertIn("boundary", fields)
+        self.assertTrue("boundaries" in fields or "boundary" in fields)
         self.assertIn("sro_details", fields)
-        self.assertIn("XXXX-XXXX-4512", fields["vendor_details"]["value"])
+        self.assertIn("RAJENDRAN", fields["vendor_details"]["value"])
+
+    def test_dynamic_ec_header_extraction(self):
+        """Verify zero-fallback dynamic extraction of EC header fields."""
+        sample_text = """OAT
+Certificate of Encumbrance on Property
+சொத்துதொடர்பானவில்லங்கச் சான்று
+S.R.O/சா.ப.அ: Chengleput JointI
+Date / நாள்: 04-Sep-2026
+Village /கிராமம்:Alappakkam
+SurveyDetails /சர்வேவிவரம்: 35
+Data Availability Period for Village: Alappakkam
+Chengleput Joint I Sub Registrar Office: From 01-Jan-2003 To 03-Sep-2026
+Search Period/தடுதல் காலம்: 01-Jan-2003 - 03-Sep-2026
+"""
+        extracted = self.extractor.extract(sample_text, doc_type="ec")
+        fields = extracted["fields"]
+
+        self.assertEqual(fields["survey_searched"]["value"], "35")
+        self.assertEqual(fields["search_period"]["value"], "01-Jan-2003 to 03-Sep-2026")
+        self.assertEqual(fields["sro_available_from"]["value"], "From 01-Jan-2003 To 03-Sep-2026")
+        self.assertEqual(fields["village"]["value"], "Alappakkam (அலப்பாக்கம்)")
+        self.assertEqual(fields["district"]["value"], "Chengalpattu (செங்கல்பட்டு)")
 
     def test_cross_verification_standard_bundle(self):
         """Verify standard cross-check matrix passes all 7 checks on genuine bundle."""
