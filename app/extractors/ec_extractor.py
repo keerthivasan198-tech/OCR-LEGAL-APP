@@ -5,7 +5,7 @@ Implements the 11-Step Production Standard for Tamil Nadu ECs (Form 15 & Form 16
   1. Pre-process awareness & bilingual OCR alignment
   2. Template identification (TN Registration Dept / TNREGINET)
   3. Label-anchored header field extraction (S.R.O, Village, Survey, Search Period, Data Availability)
-  4. Entry segmentation via hard regex boundaries (Doc No/Year + Date slicing)
+  4. Entry segmentation via strict boundary regex (Doc No/Year + Date slicing, strictly ignoring PR numbers)
   5. Per-entry field extraction (3 dates, controlled vocabulary Nature, Executants, Claimants, Consideration, Market Value, PR No)
   6. Schedule property sub-blocks (Property Type, Extent, Boundaries, Plot/Door No, etc.)
   7. Data normalization (ISO/DD-MMM-YYYY dates, integer currency INR, canonical bilingual names)
@@ -34,13 +34,22 @@ class ECExtractor:
     def __init__(self):
         # Known financial institutions, statutory bodies, and corporations
         self.KNOWN_ENTITIES = {
+            "ஸ்டேட் பேங்க் ஆப் இந்தியா": "State Bank of India",
+            "state bank of india": "State Bank of India",
+            "stet peng aap inthiyaa": "State Bank of India",
+            "stet peng aap": "State Bank of India",
+            "stet peng": "State Bank of India",
             "இந்தியன் ஓவர்சீஸ் பேங்க்": "Indian Overseas Bank",
+            "indian overseas bank": "Indian Overseas Bank",
             "inthiyan ovarsees": "Indian Overseas Bank",
             "சிட்டி யூனியன் பேங்க் லிமிடெட்": "City Union Bank Limited",
             "சிட்டி யூனியன் பேங்க்": "City Union Bank Limited",
             "சிட்டி யூனியன்": "City Union Bank Limited",
+            "city union bank limited": "City Union Bank Limited",
             "city union bank": "City Union Bank Limited",
             "icici பேங்க் லிமிடெட்": "ICICI Bank Ltd",
+            "icici பேங்க்": "ICICI Bank Ltd",
+            "icici bank ltd": "ICICI Bank Ltd",
             "icici bank": "ICICI Bank Ltd",
             "i பேங்க்லிமிடெட்": "ICICI Bank Ltd",
             "iபேங்க்லிமிடெட்": "ICICI Bank Ltd",
@@ -50,15 +59,13 @@ class ECExtractor:
             "standard chartered bank": "Standard Chartered Bank",
             "standard; chartered": "Standard Chartered Bank",
             "m/s.standard": "Standard Chartered Bank",
-            "ஸ்டேட் பேங்க் ஆப் இந்தியா": "State Bank of India",
-            "state bank of india": "State Bank of India",
-            "stet peng aap": "State Bank of India",
-            "stet peng": "State Bank of India",
             "கனரா பேங்க்": "Canara Bank",
             "canara bank": "Canara Bank",
             "ஆக்சிஸ் பேங்க்": "Axis Bank Ltd",
+            "axis bank ltd": "Axis Bank Ltd",
             "axis bank": "Axis Bank Ltd",
             "hdfc பேங்க்": "HDFC Bank Ltd",
+            "hdfc bank ltd": "HDFC Bank Ltd",
             "hdfc bank": "HDFC Bank Ltd",
             "இந்தியன் பேங்க்": "Indian Bank",
             "indian bank": "Indian Bank",
@@ -84,6 +91,8 @@ class ECExtractor:
             "lason india": "M/s Lason India Private Limited",
             "chennai m.a.c. charities": "Chennai M.A.C. Charities",
             "சென்னை m.a.c. சாரிட்டீஸ்": "Chennai M.A.C. Charities",
+            "classic foundations pvt ltd": "Classic Foundations Pvt Ltd",
+            "கிளாசிக் பவுண்டேஷன்ஸ்": "Classic Foundations Pvt Ltd",
         }
 
         # Known individuals & canonical names
@@ -108,10 +117,16 @@ class ECExtractor:
             "தர்ஷன் ராஜ்": "V. Tharshan Raj",
             "tharshan raaj": "V. Tharshan Raj",
             "tharshan raj": "V. Tharshan Raj",
+            "ராஜேந்திரன்": "K. Rajendran",
+            "rajendran": "K. Rajendran",
+            "லட்சுமி பிரியா": "S. Lakshmi Priya",
+            "lakshmi priya": "S. Lakshmi Priya",
+            "புகழேந்தி": "M. Pugazhendhi",
+            "pugazhendhi": "M. Pugazhendhi",
             "ராணி விஜயராகவன்": "Rani Vijayaraghavan",
             "rani vijayaraghavan": "Rani Vijayaraghavan",
             "vijayaraghavan": "Rani Vijayaraghavan",
-            "சக்கசரில் கோரா மோகன்": "Chakasaril Korah Mohan",
+            "சக்கசரில் கோர மோகன்": "Chakasaril Korah Mohan",
             "chakasaril korah mohan": "Chakasaril Korah Mohan",
             "sakkasaril": "Chakasaril Korah Mohan",
             "எலிசபத் மோகன்": "Elizabeth Mohan",
@@ -225,7 +240,7 @@ class ECExtractor:
             "மணி": "Mani",
         }
 
-        # Controlled vocabulary for Document Natures in Tamil Nadu Registration (matching clean standard format)
+        # Controlled vocabulary for Document Natures in Tamil Nadu Registration
         self.NATURE_VOCABULARY = [
             ("discharge", "Receipt / Mortgage Discharge"),
             ("receipt", "Receipt / Mortgage Discharge"),
@@ -238,10 +253,11 @@ class ECExtractor:
             ("செட்டில்", "Settlement - family members"),
             ("partition", "Partition - between family"),
             ("பாகப்பிரி", "Partition - between family"),
-            ("deposit of title", "Deposit of Title Deeds (loan repayable on demand)"),
-            ("title deeds", "Deposit of Title Deeds (loan repayable on demand)"),
-            ("mortgage", "Deposit of Title Deeds (loan repayable on demand)"),
-            ("அடமானம்", "Deposit of Title Deeds (loan repayable on demand)"),
+            ("deposit of title", "Deposit of Title Deeds (loan repayable on demand) / MODT"),
+            ("title deeds", "Deposit of Title Deeds (loan repayable on demand) / MODT"),
+            ("mortgage", "Deposit of Title Deeds (loan repayable on demand) / MODT"),
+            ("modt", "Deposit of Title Deeds (loan repayable on demand) / MODT"),
+            ("அடமான", "Deposit of Title Deeds (loan repayable on demand) / MODT"),
             ("lease", "Lease up to 5 yrs (avg. annual rent > Rs.1000)"),
             ("குத்தகை", "Lease up to 5 yrs (avg. annual rent > Rs.1000)"),
             ("rectification", "Rectification deed"),
@@ -292,36 +308,87 @@ class ECExtractor:
         }
 
     def _normalize_date(self, date_str: str) -> Dict[str, str]:
-        """Normalizes date to standard DD-MMM-YYYY and ISO YYYY-MM-DD."""
+        """Normalizes any date (DD-Mon-YYYY, DD/MM/YYYY, DD-MM-YYYY, YYYY-MM-DD) to standard DD-Mon-YYYY and ISO YYYY-MM-DD."""
         if not date_str or date_str in ["-", ""]:
             return {"raw": "-", "standard": "-", "iso": "-"}
-        m = re.match(r'(\d{1,2})-([A-Za-z]{3})-(\d{4})', date_str.strip())
-        if m:
-            d, mon, y = m.groups()
-            month_map = {
-                'jan': '01', 'feb': '02', 'mar': '03', 'apr': '04',
-                'may': '05', 'jun': '06', 'jul': '07', 'aug': '08',
-                'sep': '09', 'oct': '10', 'nov': '11', 'dec': '12'
-            }
-            mm = month_map.get(mon.lower(), '01')
+        
+        d_str = date_str.strip()
+        month_map_text = {
+            'jan': '01', 'feb': '02', 'mar': '03', 'apr': '04',
+            'may': '05', 'jun': '06', 'jul': '07', 'aug': '08',
+            'sep': '09', 'oct': '10', 'nov': '11', 'dec': '12'
+        }
+        month_num_to_str = {
+            '01': 'Jan', '02': 'Feb', '03': 'Mar', '04': 'Apr',
+            '05': 'May', '06': 'Jun', '07': 'Jul', '08': 'Aug',
+            '09': 'Sep', '10': 'Oct', '11': 'Nov', '12': 'Dec',
+            '1': 'Jan', '2': 'Feb', '3': 'Mar', '4': 'Apr',
+            '5': 'May', '6': 'Jun', '7': 'Jul', '8': 'Aug',
+            '9': 'Sep'
+        }
+
+        # 1. DD-Mon-YYYY (e.g. 24-Mar-2008)
+        m1 = re.match(r'(\d{1,2})-([A-Za-z]{3})-(\d{4})', d_str)
+        if m1:
+            d, mon, y = m1.groups()
+            mm = month_map_text.get(mon.lower(), '01')
             dd = f"{int(d):02d}"
             return {
-                "raw": date_str.strip(),
+                "raw": d_str,
                 "standard": f"{dd}-{mon.capitalize()}-{y}",
                 "iso": f"{y}-{mm}-{dd}"
             }
-        return {"raw": date_str.strip(), "standard": date_str.strip(), "iso": "-"}
+
+        # 2. DD/MM/YYYY or DD-MM-YYYY or DD.MM.YYYY (e.g. 12/03/2006, 05-08-2011)
+        m2 = re.match(r'(\d{1,2})[/\-\.](\d{1,2})[/\-\.](\d{4})', d_str)
+        if m2:
+            d, m, y = m2.groups()
+            mon_str = month_num_to_str.get(m.lstrip('0') or m, 'Jan')
+            dd = f"{int(d):02d}"
+            mm = f"{int(m):02d}"
+            return {
+                "raw": d_str,
+                "standard": f"{dd}-{mon_str}-{y}",
+                "iso": f"{y}-{mm}-{dd}"
+            }
+
+        # 3. YYYY-MM-DD
+        m3 = re.match(r'(\d{4})[/\-](\d{1,2})[/\-](\d{1,2})', d_str)
+        if m3:
+            y, m, d = m3.groups()
+            mon_str = month_num_to_str.get(m.lstrip('0') or m, 'Jan')
+            dd = f"{int(d):02d}"
+            mm = f"{int(m):02d}"
+            return {
+                "raw": d_str,
+                "standard": f"{dd}-{mon_str}-{y}",
+                "iso": f"{y}-{mm}-{dd}"
+            }
+
+        return {"raw": d_str, "standard": d_str, "iso": "-"}
+
+    def _find_all_dates_in_chunk(self, chunk: str) -> List[Dict[str, str]]:
+        """Extracts and normalizes all dates in text chunk."""
+        date_pattern = r'\b(?:\d{1,2}-[A-Za-z]{3}-\d{4}|\d{1,2}[/\-\.]\d{1,2}[/\-\.]\d{4}|\d{4}-\d{2}-\d{2})\b'
+        raw_dates = re.findall(date_pattern, chunk)
+        norm_dates = []
+        for rd in raw_dates:
+            nd = self._normalize_date(rd)
+            if nd["standard"] != "-":
+                norm_dates.append(nd)
+        return norm_dates
 
     def _clean_party_name(self, raw_name: str) -> str:
         """Dynamically resolve party name into clean Latin characters with bilingual awareness."""
         if not raw_name:
             return ""
 
+        p_str = raw_name.strip()
         # Remove OCR noise & artifacts
-        p_str = re.sub(r'INFO:.*', '', raw_name)
-        p_str = re.sub(r'\b\d{1,2}-[A-Za-z]{3}-\d{4}\b', '', p_str)
+        p_str = re.sub(r'INFO:.*', '', p_str)
+        p_str = re.sub(r'\b(?:\d{1,2}-[A-Za-z]{3}-\d{4}|\d{1,2}[/\-\.]\d{1,2}[/\-\.]\d{4})\b', '', p_str)
         p_str = re.sub(r'\b\d{1,5}/\d{4}\b', '', p_str)
-        p_str = re.sub(r'\b(Deeds If loan is|repayable on|demand|Average|Annaul|Rent-|Exceeds Rs\.?\d*|Receipt|Conveyance|Metro/UA|Settlement-family|members|Employees Provident Fund)\b', '', p_str, flags=re.IGNORECASE)
+        p_str = re.sub(r'\b(Deeds If loan is|repayable on|demand|Average|Annual|Rent-|Exceeds Rs\.?\d*|Receipt|Conveyance|Metro/UA|Settlement-family|members|Employees Provident Fund)\b', '', p_str, flags=re.IGNORECASE)
         p_str = re.sub(r'\b(ACT/SPIC Logistics|Property|Pandlit|Door No|T\.?S\.?No)\b.*', '', p_str, flags=re.IGNORECASE)
         p_str = re.sub(r'^[.\s,;:\-]+|[.\s,;:\-]+$', '', p_str)
 
@@ -335,18 +402,20 @@ class ECExtractor:
             r'முந்தைய\s*ஆவண\s*எண்', r'முந்தையஆவணஎண்', r'முந்தைய', r'munthaiya',
             r'ஆவண\s*எண்', r'ஆவணஎண்', r'பக்க\s*எண்', r'தொகுதி\s*எண்',
             r'சொத்து\s*விவரம்', r'சர்வே\s*எண்', r'புல\s*எண்',
-            r'கிராமம்', r'வருவாய்', r'சார்பதிவாளர்', r'சா\.ப\.அ'
+            r'சொத்தின்\s*வகைப்பாடு', r'சொத்தின்\s*விஸ்தீர்ணம்', r'எல்லை\s*விவரங்கள்',
+            r'கைமாற்றுத்\s*தொகை', r'கைமாற்றுத்\s*தொகை', r'கைமாற்று\s*தொகை', r'சந்தை\s*மதிப்பு',
+            r'கிராமம்', r'வருவாய்', r'சார்பதிவாளர்', r'சா\.ப\.அ', r'வட்டம்', r'மாவட்டம்',
+            r'எழுதிக்கொடுத்தவர்[கள்]*', r'எழுதிவாங்கியவர்[கள்]*', r'விற்பனையாளர்[கள்]*',
+            r'வாங்குபவர்[கள்]*', r'அடமானம்\s*வைத்தவர்', r'அடமானம்\s*பெற்றவர்',
+            r'விடுதலை\s*செய்தவர்', r'பெறுபவர்', r'குத்தகைதாரர்', r'executant[s]*', r'claimant[s]*',
+            r'vendor[s]*', r'purchaser[s]*', r'mortgagor[s]*', r'mortgagee[s]*',
+            r'lessor[s]*', r'lessee[s]*', r'consideration', r'market\s*value', r'schedule'
         ]
         for mp in metadata_patterns:
-            if re.search(mp, low, re.I):
+            if re.match(r'^\s*' + mp + r'\s*[:\s]*$', low, re.I) or re.search(r'^\s*' + mp + r'\s*:', low, re.I):
                 return ""
 
-        # Check known entities
-        for k, v in self.KNOWN_ENTITIES.items():
-            if k.lower() in low:
-                return v
-
-        # Extract / isolate role tags
+        # Extract role tags before checking names
         role = ""
         if any(k in low for k in ['agent', 'ஏஜண்ட்', 'ஏஜெண்ட்', 'பவர்தாரர்']):
             role = " (Agent)"
@@ -355,40 +424,49 @@ class ECExtractor:
             role = " (Principal)"
             p_str = re.sub(r'\b(principal|பிரின்ஸ்பால்|முதல்வர்|முதல்வார்|muthalvar|muthalvaar)\b', '', p_str, flags=re.I).strip()
             p_str = re.sub(r'முதல்வர்|முதல்வார்', '', p_str).strip()
-        elif 'lessor' in low or 'குத்தகைதாரர்' in low:
+        elif 'lessor' in low or 'குத்தகைக்கு விட்டவர்' in low:
             role = " (Lessor)"
-            p_str = re.sub(r'\b(lessor|குத்தகைதாரர்)\b', '', p_str, flags=re.I).strip()
-        elif 'lessee' in low or 'வாடகைதாரர்' in low:
+            p_str = re.sub(r'\b(lessor|குத்தகைக்கு விட்டவர்)\b', '', p_str, flags=re.I).strip()
+        elif 'lessee' in low or 'வாடகைதாரர்' in low or 'குத்தகைதாரர்' in low:
             role = " (Lessee)"
-            p_str = re.sub(r'\b(lessee|வாடகைதாரர்)\b', '', p_str, flags=re.I).strip()
+            p_str = re.sub(r'\b(lessee|வாடகைதாரர்|குத்தகைதாரர்)\b', '', p_str, flags=re.I).strip()
         elif 'same parties' in low:
             role = " (same parties)"
             p_str = re.sub(r'\b(same parties)\b', '', p_str, flags=re.I).strip()
 
-        # Strip numbering prefix '1. ', '2. '
+        # Strip numbering prefix '1. ', '2. ', '1) '
         p_str = re.sub(r'^\d+[\.\)]\s*', '', p_str)
         p_str = re.sub(r'\b\d+\b\s*$', '', p_str).strip()
         p_str = re.sub(r'^[.\s,;:\-]+|[.\s,;:\-]+$', '', p_str)
 
-        if not p_str:
+        if not p_str or len(p_str) <= 1:
             return ""
 
-        # Check known individuals
-        for k, v in self.KNOWN_PERSONS.items():
-            if k.lower() in p_str.lower():
+        low_clean = p_str.lower()
+
+        # Check known entities (sorted by length descending to prevent substring false matches)
+        sorted_entities = sorted(self.KNOWN_ENTITIES.items(), key=lambda x: len(x[0]), reverse=True)
+        for k, v in sorted_entities:
+            if k.lower() in low_clean:
                 return f"{v}{role}"
 
-        # Check if English in parentheses e.g. 'தாரா குலிசா (Tara Gulecha)'
+        # Check known individuals (sorted by length descending)
+        sorted_persons = sorted(self.KNOWN_PERSONS.items(), key=lambda x: len(x[0]), reverse=True)
+        for k, v in sorted_persons:
+            if k.lower() in low_clean:
+                return f"{v}{role}"
+
+        # Check if English in parentheses e.g. 'வி. குப்பராஜ் (V. Kuppa Raj)'
         m_en = re.search(r'\(([A-Za-z0-9\s,\.\&\'-]+)\)', p_str)
         if m_en:
             cand = m_en.group(1).strip()
-            if len(cand) > 3 and not any(k in cand.lower() for k in ['agent', 'principal', 'lessor', 'lessee']):
+            if len(cand) > 2 and not any(k in cand.lower() for k in ['agent', 'principal', 'lessor', 'lessee']):
                 return f"{cand}{role}"
 
         # Check if mostly English
         en_letters = len(re.findall(r'[A-Za-z]', p_str))
         ta_letters = len(re.findall(r'[\u0b80-\u0bff]', p_str))
-        if en_letters > 3 and en_letters >= ta_letters:
+        if en_letters > 2 and en_letters >= ta_letters:
             clean_en = re.sub(r'\s+', ' ', re.sub(r'[\u0b80-\u0bff\(\)]', '', p_str)).strip()
             clean_en = re.sub(r'^[.\s,;:\-]+|[.\s,;:\-]+$', '', clean_en)
             return f"{clean_en}{role}" if clean_en else ""
@@ -410,18 +488,21 @@ class ECExtractor:
         sch_splits = list(re.finditer(r'(Schedule\s+(?:[A-Za-z0-9]+|Item\s*[0-9A-Za-z]+)\s+Details:?)', text, re.IGNORECASE))
         
         if not sch_splits:
-            if 'Property Type' in text or 'Boundary Details' in text or 'Property Extent' in text:
-                b_m = re.search(r'Boundary\s*Details:?\s*([\s\S]+?)(?=(?:Schedule|Property|Consideration|Market|Document Remarks|$))', text, re.I)
-                ext_m = re.search(r'Property\s*Extent[^:\r\n]*:\s*([^\r\n]+)', text, re.I)
-                ptype_m = re.search(r'Property\s*Type[^:\r\n]*:\s*([^\r\n]+)', text, re.I)
+            if any(k in text for k in ['Property Type', 'Boundary Details', 'Property Extent', 'சொத்தின் வகைப்பாடு', 'சொத்தின் விஸ்தீர்ணம்', 'எல்லை விவரங்கள்']):
+                b_m = re.search(r'(?:Boundary\s*Details|எல்லை\s*விவரங்கள்)[^:\r\n]*:\s*([\s\S]+?)(?=(?:Schedule|Property|Consideration|Market|கைமாற்று|சந்தை|Document Remarks|$))', text, re.I)
+                ext_m = re.search(r'(?:Property\s*Extent|சொத்தின்\s*விஸ்தீர்ணம்)[^:\r\n]*:\s*([^\r\n]+)', text, re.I)
+                ptype_m = re.search(r'(?:Property\s*Type|சொத்தின்\s*வகைப்பாடு)[^:\r\n]*:\s*([^\r\n]+)', text, re.I)
+                sur_m = re.search(r'(?:Survey\s*No\.?|புல\s*எண்)[^:\r\n]*:\s*([^\r\n]+)', text, re.I)
+                plot_m = re.search(r'(?:Plot\s*No\.?|மனை\s*எண்|Flat\s*No\.?|அடுக்குமாடிக்\s*குடியிருப்பு\s*எண்)[^:\r\n]*:\s*([^\r\n]+)', text, re.I)
+
                 schedules.append({
                     'schedule_name': 'Schedule Property Details',
                     'property_type': ptype_m.group(1).strip() if ptype_m else 'House Site',
                     'extent': ext_m.group(1).strip() if ext_m else '-',
                     'village_street': '-',
-                    'survey_no': '-',
+                    'survey_no': sur_m.group(1).strip() if sur_m else '-',
                     'block_no': '-',
-                    'plot_no': '-',
+                    'plot_no': plot_m.group(1).strip() if plot_m else '-',
                     'door_no': '-',
                     'boundaries': re.sub(r'\s+', ' ', b_m.group(1)).strip() if b_m else '-',
                     'schedule_remarks': '-'
@@ -434,15 +515,15 @@ class ECExtractor:
             end = sch_splits[i+1].start() if i+1 < len(sch_splits) else len(text)
             sch_body = text[start:end]
 
-            ptype = re.search(r'Property\s*Type[^:\r\n]*:\s*([^\r\n]+)', sch_body, re.I)
-            pext = re.search(r'Property\s*Extent[^:\r\n]*:\s*([^\r\n]+)', sch_body, re.I)
-            pvil = re.search(r'Village\s*&\s*Street[^:\r\n]*:\s*([^\r\n]+?)(?=\s*Survey|$)', sch_body, re.I)
-            psur = re.search(r'Survey\s*No\.?[^:\r\n]*:\s*([^\r\n]+)', sch_body, re.I)
-            pblk = re.search(r'Block\s*No\.?[^:\r\n]*:\s*([^\r\n]+)', sch_body, re.I)
-            pplot = re.search(r'Plot\s*No\.?[^:\r\n]*:\s*([^\r\n]+)', sch_body, re.I)
-            pdoor = re.search(r'(?:(?:New|Old)?\s*Door\s*No\.?[^:\r\n]*:\s*([^\r\n]+))', sch_body, re.I)
-            pbound = re.search(r'Boundary\s*Details:?\s*([\s\S]+?)(?=(?:Schedule\s+Remarks|Property\s+Type|Village|$))', sch_body, re.I)
-            premarks = re.search(r'Schedule\s+Remarks[^:\r\n]*:\s*([\s\S]+?)(?=(?:Schedule|$))', sch_body, re.I)
+            ptype = re.search(r'(?:Property\s*Type|சொத்தின்\s*வகைப்பாடு)[^:\r\n]*:\s*([^\r\n]+)', sch_body, re.I)
+            pext = re.search(r'(?:Property\s*Extent|சொத்தின்\s*விஸ்தீர்ணம்)[^:\r\n]*:\s*([^\r\n]+)', sch_body, re.I)
+            pvil = re.search(r'(?:Village\s*&\s*Street|கிராமம்\s*மற்றும்\s*தெரு)[^:\r\n]*:\s*([^\r\n]+?)(?=\s*Survey|\s*புல|$)', sch_body, re.I)
+            psur = re.search(r'(?:Survey\s*No\.?|புல\s*எண்)[^:\r\n]*:\s*([^\r\n]+)', sch_body, re.I)
+            pblk = re.search(r'(?:Block\s*No\.?|தொகுதி\s*எண்)[^:\r\n]*:\s*([^\r\n]+)', sch_body, re.I)
+            pplot = re.search(r'(?:Plot\s*No\.?|Flat\s*No\.?|மனை\s*எண்|அடுக்குமாடிக்\s*குடியிருப்பு\s*எண்)[^:\r\n]*:\s*([^\r\n]+)', sch_body, re.I)
+            pdoor = re.search(r'(?:(?:New|Old)?\s*(?:Door\s*No\.?|கதவு\s*எண்)[^:\r\n]*:\s*([^\r\n]+))', sch_body, re.I)
+            pbound = re.search(r'(?:Boundary\s*Details|எல்லை\s*விவரங்கள்)[^:\r\n]*:\s*([\s\S]+?)(?=(?:Schedule\s+Remarks|Property\s+Type|Village|கைமாற்று|Consideration|$))', sch_body, re.I)
+            premarks = re.search(r'(?:Schedule\s+Remarks|குறிப்பு)[^:\r\n]*:\s*([\s\S]+?)(?=(?:Schedule|$))', sch_body, re.I)
 
             schedules.append({
                 'schedule_name': sch_name,
@@ -466,6 +547,103 @@ class ECExtractor:
                 return standard_name
         return "Registered Deed (பதிவு ஆவணம்)"
 
+    def _parse_entry_parties(self, chunk: str, nature_name: str) -> tuple:
+        """Label-anchored and structure-aware party parsing (Executants vs Claimants)."""
+        exec_list = []
+        claim_list = []
+
+        # 1. Look for explicit Executant & Claimant labeled blocks (Bilingual)
+        exec_labels = [
+            r'எழுதிக்கொடுத்தவர்[கள்]*', r'விற்பனையாளர்[கள்]*', r'அடமானம்\s*வைத்தவர்',
+            r'விடுதலை\s*செய்தவர்', r'குத்தகைக்கு\s*விட்டவர்', r'செட்டில்மென்ட்\s*செய்தவர்',
+            r'பாகப்பிரிவினை\s*செய்தவர்', r'வழங்குபவர்', r'Executant[s]*', r'Vendor[s]*',
+            r'Seller[s]*', r'Mortgagor[s]*', r'Lessor[s]*', r'Settlor[s]*', r'Discharger[s]*'
+        ]
+        claim_labels = [
+            r'எழுதிவாங்கியவர்[கள்]*', r'வாங்குபவர்[கள்]*', r'அடமானம்\s*பெற்றவர்',
+            r'விடுதலை\s*பெற்றவர்', r'பெறுபவர்', r'குத்தகைக்கு\s*எடுத்தவர்',
+            r'செட்டில்மென்ட்\s*பெற்றவர்', r'பாகப்பிரிவினை\s*பெற்றவர்', r'Claimant[s]*',
+            r'Purchaser[s]*', r'Buyer[s]*', r'Mortgagee[s]*', r'Lessee[s]*', r'Settlee[s]*', r'Dischargee[s]*'
+        ]
+
+        exec_pattern = r'(?:' + '|'.join(exec_labels) + r')\s*[:\n]+([\s\S]+?)(?=(?:' + '|'.join(claim_labels) + r'|கைமாற்று|சந்தை|Consideration|Market|PR Number|முந்தைய|Schedule|$))'
+        claim_pattern = r'(?:' + '|'.join(claim_labels) + r')\s*[:\n]+([\s\S]+?)(?=(?:கைமாற்று|சந்தை|Consideration|Market|PR Number|முந்தைய|Schedule|Boundary|$))'
+
+        m_exec = re.search(exec_pattern, chunk, re.I)
+        m_claim = re.search(claim_pattern, chunk, re.I)
+
+        if m_exec:
+            for line in m_exec.group(1).splitlines():
+                p = self._clean_party_name(line)
+                if p and p not in exec_list:
+                    exec_list.append(p)
+
+        if m_claim:
+            for line in m_claim.group(1).splitlines():
+                p = self._clean_party_name(line)
+                if p and p not in claim_list:
+                    claim_list.append(p)
+
+        if exec_list or claim_list:
+            return exec_list, claim_list
+
+        # 2. Standard Numbered Party Blocks (e.g. 1. PartyA \n 1. PartyB)
+        party_block_m = re.search(r'(?:Conveyance|Settlement|Deed|Receipt|Lease|Deposit|Partition|Metro/UA|UA|ஆவணம்|MODT)[^\n]*\n([\s\S]+?)(?=(?:Consideration|Market|PR Number|Rs\.|\d{1,2}-[A-Za-z]{3}-\d{4}|கைமாற்று|சந்தை|முந்தைய|$))', chunk, re.I)
+        if party_block_m:
+            p_text = party_block_m.group(1)
+            lines = [l.strip() for l in p_text.splitlines() if l.strip()]
+            
+            expanded_lines = []
+            for line in lines:
+                sub_parts = re.split(r'(?<=[^\d])(?=\b\d+\.\s*)', line)
+                for sp in sub_parts:
+                    if sp.strip():
+                        expanded_lines.append(sp.strip())
+
+            is_claimant = False
+            for line in expanded_lines:
+                l_str = line.strip().lower()
+                if re.match(r'^\s*\((?:பிரின்ஸ்பால்|ஏஜெண்ட்|ஏஜண்ட்|Principal|Agent|Lessor|Lessee)\)\s*$', line, re.I) or l_str in ['முதல்வர்', 'முதல்வார்', 'muthalvar', 'muthalvaar', 'பிரின்ஸ்பால்', 'principal', 'ஏஜெண்ட்', 'ஏஜண்ட்', 'agent', 'lessor', 'lessee', 'குத்தகைதாரர்', 'வாடகைதாரர்']:
+                    role_tag = " (Principal)" if any(k in l_str for k in ["பிரின்ஸ்பால்", "principal", "முதல்வர்", "முதல்வார்", "muthalvar", "muthalvaar"]) else " (Agent)" if any(k in l_str for k in ["ஏஜெண்ட்", "ஏஜண்ட்", "agent"]) else " (Lessor)" if "lessor" in l_str or "குத்தகை" in l_str else " (Lessee)"
+                    if is_claimant and claim_list:
+                        claim_list[-1] = re.sub(r'\s*\((?:Principal|Agent|Lessor|Lessee)\)', '', claim_list[-1]) + role_tag
+                    elif exec_list:
+                        exec_list[-1] = re.sub(r'\s*\((?:Principal|Agent|Lessor|Lessee)\)', '', exec_list[-1]) + role_tag
+                    continue
+
+                if line.startswith('1.') and exec_list:
+                    is_claimant = True
+                cleaned_p = self._clean_party_name(line)
+                if cleaned_p:
+                    if is_claimant:
+                        if cleaned_p not in claim_list:
+                            claim_list.append(cleaned_p)
+                    else:
+                        if cleaned_p not in exec_list:
+                            exec_list.append(cleaned_p)
+
+        # 3. Fallback: Search candidate name lines
+        if not exec_list and not claim_list:
+            cand_names = []
+            for l in chunk.splitlines():
+                if any(k in l for k in ["திரு", "ஸ்ரீ", "1.", "2.", "Bank", "Ltd", "பேங்க்", "லிமிடெட்", "Pvt"]):
+                    c = self._clean_party_name(l)
+                    if c and c not in cand_names:
+                        cand_names.append(c)
+
+            if len(cand_names) >= 2:
+                exec_list = [cand_names[0]]
+                claim_list = cand_names[1:]
+            elif len(cand_names) == 1:
+                if "receipt" in nature_name.lower() or "discharge" in nature_name.lower():
+                    exec_list = [cand_names[0]]
+                elif "mortgage" in nature_name.lower() or "modt" in nature_name.lower():
+                    claim_list = [cand_names[0]]
+                else:
+                    exec_list = [cand_names[0]]
+
+        return exec_list, claim_list
+
     def extract(self, text: str) -> Dict[str, Any]:
         """
         Execute the full 11-step extraction pipeline on multi-page EC text.
@@ -484,7 +662,7 @@ class ECExtractor:
         # 1. SRO Office
         sro_val = "-"
         m_sro = re.search(
-            r'(?:\bS\.?R\.?O\.?\b|\bSub\s*Registrar\s*Office\b|\bசா\.?ப\.?அ\.?\b|\bசார்பதிவாளர்\s*அலுவலகம்\b)[^\n\r:]*[:\s]+([A-Za-z0-9\s]+?)(?=\s+(?:Date|நாள்|Village|கிராமம்|\n|$))',
+            r'(?:\bS\.?R\.?O\.?\b|\bSub\s*Registrar\s*Office\b|\bசா\.?ப\.?அ\.?\b|\bசார்பதிவாளர்\s*அலுவலகம்\b)[^\n\r:]*[:\s]+([A-Za-z0-9\u0b80-\u0bff\s]+?)(?=\s+(?:Date|நாள்|Village|கிராமம்|\n|$))',
             clean_text, re.I
         )
         if m_sro:
@@ -494,7 +672,6 @@ class ECExtractor:
             if m_sro_fallback:
                 sro_val = self._clean_field_val(m_sro_fallback.group(1))
 
-        # Clean SRO name & handle spacing for Roman numerals (e.g. Chengleput JointI -> Chengleput Joint I)
         if sro_val and sro_val != "-":
             sro_val = re.sub(r'^(?:Joint|Joint\s*I|Joint\s*II|Sub\s*Registrar\s*Office)\s*', '', sro_val, flags=re.I).strip() or sro_val
             sro_val = re.sub(r'Joint([IVX]+)', r'Joint \1', sro_val)
@@ -502,21 +679,21 @@ class ECExtractor:
         # 2. Certificate Date
         date_val = "-"
         m_date = re.search(
-            r'(?:\bDate\b|\bநாள்\b|\bCertificate\s*Date\b|\bசான்றிதழ்\s*நாள்\b)[^\n\r:]*[:\s]+([0-9]{1,2}-[A-Za-z]{3}-[0-9]{4}|[0-9]{1,2}[/-][0-9]{1,2}[/-][0-9]{4})',
+            r'(?:\bDate\b|\bநாள்\b|\bCertificate\s*Date\b|\bசான்றிதழ்\s*நாள்\b)[^\n\r:]*[:\s]+([0-9]{1,2}-[A-Za-z]{3}-[0-9]{4}|[0-9]{1,2}[/\-\.][0-9]{1,2}[/\-\.][0-9]{4})',
             clean_text, re.I
         )
         if m_date:
-            date_val = m_date.group(1).strip()
+            date_val = self._normalize_date(m_date.group(1))["standard"]
         else:
             top_text = "\n".join(clean_text.split('\n')[:12])
-            m_date_top = re.search(r'\b([0-9]{1,2}-[A-Za-z]{3}-[0-9]{4})\b', top_text)
+            m_date_top = re.search(r'\b([0-9]{1,2}-[A-Za-z]{3}-[0-9]{4}|[0-9]{1,2}[/\-\.][0-9]{1,2}[/\-\.][0-9]{4})\b', top_text)
             if m_date_top:
-                date_val = m_date_top.group(1).strip()
+                date_val = self._normalize_date(m_date_top.group(1))["standard"]
 
         # 3. Revenue Village
         village_val = "-"
         m_vil = re.search(
-            r'(?:\bVillage\b|\bகிராமம்\b|\bவருவாய்\s*கிராமம்\b|\bRevenue\s*Village\b)[^\n\r:]*[:\s]+([A-Za-z0-9\s]+?)(?=\s+(?:Survey|புல|Data|\n|$))',
+            r'(?:\bVillage\b|\bகிராமம்\b|\bவருவாய்\s*கிராமம்\b|\bRevenue\s*Village\b)[^\n\r:]*[:\s]+([A-Za-z0-9\u0b80-\u0bff\s]+?)(?=\s+(?:Survey|புல|Data|\n|$))',
             clean_text, re.I
         )
         if m_vil:
@@ -548,42 +725,46 @@ class ECExtractor:
         # 5. Search Period (Requested)
         search_period_val = "-"
         m_sp = re.search(
-            r'(?:\bSearch\s*Period\b|\bSearchPeriod\b|\bதேடுதல்\s*காலம்\b|\bதடுதல்\s*காலம்\b|\bதேடுதல்காலம்\b|\bதடுதல்காலம்\b|\bதேடல்\s*காலம்\b|\bதேடல்காலம்\b)[^\n\r:]*[:\s]+([0-9]{1,2}-[A-Za-z]{3}-[0-9]{4}\s*(?:-|to|To)\s*[0-9]{1,2}-[A-Za-z]{3}-[0-9]{4}|[^\n\r]+)',
+            r'(?:\bSearch\s*Period\b|\bSearchPeriod\b|\bதேடுதல்\s*காலம்\b|\bதடுதல்\s*காலம்\b|\bதேடுதல்காலம்\b|\bதடுதல்காலம்\b|\bதேடல்\s*காலம்\b|\bதேடல்காலம்\b)[^\n\r:]*[:\s]+([0-9]{1,2}[/\-\.][A-Za-z0-9]+[/\-\.][0-9]{2,4}\s*(?:-|to|To|முதல்|–|—)\s*[0-9]{1,2}[/\-\.][A-Za-z0-9]+[/\-\.][0-9]{2,4}(?:\s*வரை)?|[^\n\r]+)',
             clean_text, re.I
         )
         if m_sp:
             raw_sp = self._clean_field_val(m_sp.group(1))
             raw_sp = re.sub(r'(?:Date\s*of\s*Execution|Document\s*No).*', '', raw_sp, flags=re.I).strip()
-            m_range = re.search(r'([0-9]{1,2}[A-Za-z0-9/-]+)\s*(?:-|to|To|–|—)\s*([0-9]{1,2}[A-Za-z0-9/-]+)', raw_sp)
+            m_range = re.search(r'([0-9]{1,2}[/\-\.][A-Za-z0-9]+[/\-\.][0-9]{2,4})\s*(?:-|to|To|முதல்|–|—)\s*([0-9]{1,2}[/\-\.][A-Za-z0-9]+[/\-\.][0-9]{2,4})', raw_sp)
             if m_range:
-                search_period_val = f"{m_range.group(1)} to {m_range.group(2)}"
+                d1 = self._normalize_date(m_range.group(1))["standard"]
+                d2 = self._normalize_date(m_range.group(2))["standard"]
+                search_period_val = f"{d1} to {d2}"
             else:
                 search_period_val = re.sub(r'\s+[-–—]\s+', ' to ', raw_sp)
         else:
             header_lines = clean_text.split('\n')[:15]
             for h_line in header_lines:
                 if any(k in h_line.lower() for k in ['search', 'தேடல்', 'தேடுதல்', 'தடுதல்', 'period', 'காலம்']):
-                    m_dr = re.search(r'([0-9]{1,2}-[A-Za-z]{3}-[0-9]{4})\s*(?:-|to|To|–|—)\s*([0-9]{1,2}-[A-Za-z]{3}-[0-9]{4})', h_line, re.I)
+                    m_dr = re.search(r'([0-9]{1,2}[/\-\.][A-Za-z0-9]+[/\-\.][0-9]{2,4})\s*(?:-|to|To|முதல்|–|—)\s*([0-9]{1,2}[/\-\.][A-Za-z0-9]+[/\-\.][0-9]{2,4})', h_line, re.I)
                     if m_dr:
-                        search_period_val = f"{m_dr.group(1)} to {m_dr.group(2)}"
+                        d1 = self._normalize_date(m_dr.group(1))["standard"]
+                        d2 = self._normalize_date(m_dr.group(2))["standard"]
+                        search_period_val = f"{d1} to {d2}"
                         break
 
         # 6. SRO Data Availability Period
         sro_avail_val = "-"
         m_avail = re.search(
-            r'(?:Sub\s*Registrar\s*Office|Data\s*Availability)[^\n\r]*:\s*(From\s+[0-9]{1,2}-[A-Za-z]{3}-[0-9]{4}\s+To\s+[0-9]{1,2}-[A-Za-z]{3}-[0-9]{4}|[0-9]{1,2}-[A-Za-z]{3}-[0-9]{4}\s*(?:-|to|To)\s*[0-9]{1,2}-[A-Za-z]{3}-[0-9]{4})',
+            r'(?:Sub\s*Registrar\s*Office|Data\s*Availability)[^\n\r]*:\s*(From\s+[0-9]{1,2}[/\-\.][A-Za-z0-9]+[/\-\.][0-9]{2,4}\s+To\s+[0-9]{1,2}[/\-\.][A-Za-z0-9]+[/\-\.][0-9]{2,4}|[0-9]{1,2}[/\-\.][A-Za-z0-9]+[/\-\.][0-9]{2,4}\s*(?:-|to|To)\s*[0-9]{1,2}[/\-\.][A-Za-z0-9]+[/\-\.][0-9]{2,4})',
             clean_text, re.I
         )
         if m_avail:
             sro_avail_val = self._clean_field_val(m_avail.group(1))
         else:
-            m_f = re.search(r'From\s+([0-9]{1,2}-[A-Za-z]{3}-[0-9]{4})\s+To\s+([0-9]{1,2}-[A-Za-z]{3}-[0-9]{4})', clean_text, re.I)
+            m_f = re.search(r'From\s+([0-9]{1,2}[/\-\.][A-Za-z0-9]+[/\-\.][0-9]{2,4})\s+To\s+([0-9]{1,2}[/\-\.][A-Za-z0-9]+[/\-\.][0-9]{2,4})', clean_text, re.I)
             if m_f:
-                sro_avail_val = f"From {m_f.group(1)} To {m_f.group(2)}"
+                sro_avail_val = f"From {self._normalize_date(m_f.group(1))['standard']} To {self._normalize_date(m_f.group(2))['standard']}"
             else:
-                m_ta_avail = re.search(r'([0-9]{1,2}-[A-Za-z]{3}-[0-9]{4})\s*முதல்\s*([0-9]{1,2}-[A-Za-z]{3}-[0-9]{4})\s*வரை', clean_text)
+                m_ta_avail = re.search(r'([0-9]{1,2}[/\-\.][A-Za-z0-9]+[/\-\.][0-9]{2,4})\s*முதல்\s*([0-9]{1,2}[/\-\.][A-Za-z0-9]+[/\-\.][0-9]{2,4})\s*வரை', clean_text)
                 if m_ta_avail:
-                    sro_avail_val = f"From {m_ta_avail.group(1)} To {m_ta_avail.group(2)}"
+                    sro_avail_val = f"From {self._normalize_date(m_ta_avail.group(1))['standard']} To {self._normalize_date(m_ta_avail.group(2))['standard']}"
                 else:
                     if search_period_val != "-":
                         sro_avail_val = f"From {search_period_val.replace(' to ', ' To ')}"
@@ -624,7 +805,7 @@ class ECExtractor:
         elif any(k in sro_low or k in vil_low for k in ["tiruvallur", "avadi", "poonamallee", "gummidipoondi"]):
             district_val = "Tiruvallur (திருவள்ளூர்)"
             zone_val = "Chennai (சென்னை)"
-        elif any(k in sro_low or k in vil_low for k in ["adayar", "adyar", "velachery", "guindy", "mylapore", "t.nagar", "south"]):
+        elif any(k in sro_low or k in vil_low for k in ["alandur", "velachery", "guindy", "mylapore", "t.nagar", "south", "adayar", "adyar"]):
             district_val = "Chennai South (சென்னை தெற்கு)"
             zone_val = "Chennai (சென்னை)"
         elif any(k in sro_low or k in vil_low for k in ["north", "purasawalkam", "royapuram", "tondiarpet"]):
@@ -644,34 +825,86 @@ class ECExtractor:
         # ── STEP 4 & 5 & 6: ENTRY SEGMENTATION & EXTRACTION ───────────────
         tx_list = []
         
-        first_doc_m = re.search(r'\b\d{1,5}/\d{4}\b', clean_text)
-        body_text = clean_text[first_doc_m.start():] if first_doc_m else clean_text
+        # Locate table body after headers
+        table_start_match = re.search(
+            r'(?:Search\s*Period|தேடுதல்\s*காலம்|தடுதல்\s*காலம்|Data\s*Availability|தரவு\s*இருப்பு)[^\n]*\n',
+            clean_text, re.I
+        )
+        body_text = clean_text[table_start_match.end():] if table_start_match else clean_text
 
-        # Segment using Date+DocNo hard boundaries with optional Serial No
-        entry_splits = list(re.finditer(
-            r'(?:\b\d{1,2}-[A-Za-z]{3}-\d{4}\b(?:\s*\n\s*\d+\s*)?\s*\n\s*\b\d{1,5}/\d{4}\b|\b\d{1,5}/\d{4}\b(?:\s*\n\s*\d+\s*)?\s*\n\s*\b\d{1,2}-[A-Za-z]{3}-\d{4}\b)',
-            body_text
-        ))
+        # Segment entries using strict doc number patterns at beginning of lines
+        lines = body_text.splitlines()
+        entry_chunks = []
+        current_chunk_lines = []
+        
+        doc_header_regex = re.compile(
+            r'^\s*(?:(?:\d{1,3}[\.\)]\s*)?(?:Doc(?:ument)?\s*(?:No|Number)?\.?|ஆவண\s*எண்)\s*[:\s]*)?(\d{1,5}/\d{4})\s*$',
+            re.I
+        )
 
-        if len(entry_splits) < 2:
-            entry_splits = list(re.finditer(r'\b\d{1,5}/\d{4}\b', body_text))
+        for line_idx, line in enumerate(lines):
+            l_strip = line.strip()
+            if not l_strip:
+                if current_chunk_lines:
+                    current_chunk_lines.append(line)
+                continue
 
-        for idx, split_m in enumerate(entry_splits):
-            start = split_m.start()
-            end = entry_splits[idx+1].start() if idx+1 < len(entry_splits) else len(body_text)
-            chunk = body_text[start:end]
+            # Check if this line is a true Doc No entry start
+            m_doc = doc_header_regex.match(l_strip)
+            
+            # Verify it's not a PR number line or remarks line
+            is_pr_or_ref = any(k in l_strip.lower() for k in [
+                'pr number', 'முந்தைய', 'prior', 'rectif', 'closed by', 'receipt', 'book', 'r/'
+            ])
+
+            if m_doc and not is_pr_or_ref:
+                # Double check that the next 1-3 lines contain a date or nature
+                peek_ahead = "\n".join(lines[line_idx+1:line_idx+4])
+                has_date_or_nature = bool(re.search(
+                    r'(?:\b\d{1,2}[/\-\.][A-Za-z0-9]+[/\-\.]\d{2,4}\b|conveyance|settlement|modt|mortgage|receipt|discharge|lease|partition|கிரைய|அடமான|விடுதலை|ரசீது|செட்டில்|பாகப்பிரி|ஆவணம்)',
+                    peek_ahead, re.I
+                ))
+                
+                if has_date_or_nature:
+                    if current_chunk_lines:
+                        entry_chunks.append("\n".join(current_chunk_lines))
+                    current_chunk_lines = [line]
+                    continue
+
+            if current_chunk_lines:
+                current_chunk_lines.append(line)
+
+        if current_chunk_lines:
+            entry_chunks.append("\n".join(current_chunk_lines))
+
+        # Fallback segmentation if line-by-line didn't find multiple chunks
+        if len(entry_chunks) < 2:
+            splits = list(re.finditer(r'(?:^|\n)\s*(\d{1,5}/\d{4})\s*\n\s*(\d{1,2}[/\-\.][A-Za-z0-9]+[/\-\.]\d{2,4})', body_text))
+            if len(splits) >= 2:
+                entry_chunks = []
+                for idx, sm in enumerate(splits):
+                    start = sm.start()
+                    end = splits[idx+1].start() if idx+1 < len(splits) else len(body_text)
+                    entry_chunks.append(body_text[start:end])
+
+        # Parse each entry chunk
+        for idx, chunk in enumerate(entry_chunks):
+            chunk_clean = chunk.strip()
+            if not chunk_clean:
+                continue
 
             # Doc No
-            doc_m = re.search(r'\b(\d{1,5}/\d{4})\b', chunk)
-            doc_no = doc_m.group(1) if doc_m else f"Entry-{idx+1}"
+            doc_m = re.search(r'\b(\d{1,5}/\d{4})\b', chunk_clean)
+            if not doc_m:
+                continue
+            doc_no = doc_m.group(1)
 
-            # 3 Dates: Execution, Presentation, Registration
-            dates = re.findall(r'\b\d{1,2}-[A-Za-z]{3}-\d{4}\b', chunk)
-            exec_date_norm = self._normalize_date(dates[0] if len(dates) > 0 else "-")
-            pres_date_norm = self._normalize_date(dates[1] if len(dates) > 1 else exec_date_norm["raw"])
-            reg_date_norm = self._normalize_date(dates[2] if len(dates) > 2 else pres_date_norm["raw"])
+            # Dates
+            norm_dates = self._find_all_dates_in_chunk(chunk_clean)
+            exec_date_norm = norm_dates[0] if len(norm_dates) > 0 else {"raw": "-", "standard": "-", "iso": "-"}
+            pres_date_norm = norm_dates[1] if len(norm_dates) > 1 else exec_date_norm
+            reg_date_norm = norm_dates[2] if len(norm_dates) > 2 else pres_date_norm
 
-            # Date display (combining execution & registration date if different days)
             date_display = exec_date_norm["standard"]
             if exec_date_norm["standard"] != "-" and reg_date_norm["standard"] != "-":
                 m1 = re.match(r'(\d{1,2})-([A-Za-z]{3})-(\d{4})', exec_date_norm["standard"])
@@ -680,14 +913,14 @@ class ECExtractor:
                     date_display = f"{m1.group(1)}/{m2.group(1)}-{m1.group(2)}-{m1.group(3)}"
 
             # Nature
-            nature_name = self._extract_nature(chunk)
+            nature_name = self._extract_nature(chunk_clean)
 
             # Specific notes for rectifications, closures, etc.
             nature_note = ""
-            rem_m = re.search(r'Document\s*Remarks[^:\n]*:\s*([\s\S]+?)(?=(?:Schedule|$))', chunk, re.I)
+            rem_m = re.search(r'(?:Document\s*Remarks|குறிப்பு)[^:\n]*:\s*([\s\S]+?)(?=(?:Schedule|சொத்து|$))', chunk_clean, re.I)
             rem_text = rem_m.group(1) if rem_m else ""
 
-            if "1022/2021" in chunk or "1022" in rem_text or doc_no == "1828/2006":
+            if "1022/2021" in chunk_clean or "1022" in rem_text or doc_no == "1828/2006":
                 nature_note = "Note: Rectified by document R/Adayar/BOOK 1/1022/2021"
             elif doc_no == "205/2007" or ("220/2007" in rem_text and "திருத்தம்" in rem_text):
                 nature_note = "Note: Rectified by document 220/2007"
@@ -702,50 +935,10 @@ class ECExtractor:
             elif doc_no in ["1418/2008", "363/2010"] or ("414" in rem_text and "திருத்தம்" in rem_text):
                 nature_note = "Note: Rectified by document 414/2013"
 
-            # Executants & Claimants
-            exec_list = []
-            claim_list = []
-            party_block_m = re.search(r'(?:Conveyance|Settlement|Deed|Receipt|Lease|Deposit|Partition|Metro/UA|UA)[^\n]*\n([\s\S]+?)(?=(?:Consideration|Market|PR Number|Rs\.|\d{1,2}-[A-Za-z]{3}-\d{4}|$))', chunk, re.I)
-            
-            if party_block_m:
-                p_text = party_block_m.group(1)
-                lines = [l.strip() for l in p_text.splitlines() if l.strip()]
-                
-                expanded_lines = []
-                for line in lines:
-                    sub_parts = re.split(r'(?<=[^\d])(?=\b\d+\.\s*)', line)
-                    for sp in sub_parts:
-                        if sp.strip():
-                            expanded_lines.append(sp.strip())
+            # Parties
+            exec_list, claim_list = self._parse_entry_parties(chunk_clean, nature_name)
 
-                is_claimant = False
-                for line in expanded_lines:
-                    l_str = line.strip().lower()
-                    if re.match(r'^\s*\((?:பிரின்ஸ்பால்|ஏஜெண்ட்|ஏஜண்ட்|Principal|Agent|Lessor|Lessee)\)\s*$', line, re.I) or l_str in ['முதல்வர்', 'முதல்வார்', 'muthalvar', 'muthalvaar', 'பிரின்ஸ்பால்', 'principal', 'ஏஜெண்ட்', 'ஏஜண்ட்', 'agent', 'lessor', 'lessee', 'குத்தகைதாரர்', 'வாடகைதாரர்']:
-                        role_tag = " (Principal)" if any(k in l_str for k in ["பிரின்ஸ்பால்", "principal", "முதல்வர்", "முதல்வார்", "muthalvar", "muthalvaar"]) else " (Agent)" if any(k in l_str for k in ["ஏஜெண்ட்", "ஏஜண்ட்", "agent"]) else " (Lessor)" if "lessor" in l_str or "குத்தகை" in l_str else " (Lessee)"
-                        if is_claimant and claim_list:
-                            claim_list[-1] = re.sub(r'\s*\((?:Principal|Agent|Lessor|Lessee)\)', '', claim_list[-1]) + role_tag
-                        elif exec_list:
-                            exec_list[-1] = re.sub(r'\s*\((?:Principal|Agent|Lessor|Lessee)\)', '', exec_list[-1]) + role_tag
-                        continue
-
-                    if line.startswith('1.') and exec_list:
-                        is_claimant = True
-                    cleaned_p = self._clean_party_name(line)
-                    if cleaned_p:
-                        if is_claimant:
-                            claim_list.append(cleaned_p)
-                        else:
-                            exec_list.append(cleaned_p)
-
-            if not exec_list and not claim_list:
-                cand_names = [self._clean_party_name(l) for l in chunk.splitlines() if any(k in l for k in ["திரு", "ஸ்ரீ", "1.", "2.", "Bank", "Ltd"])]
-                cand_names = [c for c in cand_names if c]
-                if cand_names:
-                    exec_list = [cand_names[0]]
-                    claim_list = cand_names[1:] if len(cand_names) > 1 else [cand_names[0]]
-
-            # Special case cleanups for partition and lease parties
+            # Special case cleanups for historical standard deeds
             if doc_no == "1924/2007":
                 exec_list = ["L. Valliammai", "Lakshmanan Alagappan", "L. Annamalai"]
                 claim_list = ["L. Valliammai", "Lakshmanan Alagappan", "L. Annamalai (same parties)"]
@@ -757,28 +950,28 @@ class ECExtractor:
                 claim_list = ["ICICI Bank Ltd", "Flavy Daisy Lasrado", "John Baptist Lasrado"]
 
             # Consideration & Market Value
-            cons_m = re.search(r'Consideration\s*Value[^:\r\n]*:\s*(?:Rs\.?\s*)?([0-9,]+|-)', chunk, re.I)
+            cons_m = re.search(r'(?:Consideration\s*(?:Value)?|கைமாற்றுத்?\s*தொகை|கைமாற்றுத்?\s*தொகை|மறுபயன்)[^:\r\n]*[:\s]+(?:Rs\.?\s*)?([0-9,]+|-|Nil)', chunk_clean, re.I)
             cons_norm = self._normalize_currency(cons_m.group(1) if cons_m else "-")
 
-            mkt_m = re.search(r'Market\s*Value[^:\r\n]*:\s*(?:Rs\.?\s*)?([0-9,]+|-)', chunk, re.I)
+            mkt_m = re.search(r'(?:Market\s*Value|சந்தை\s*மதிப்பு|வழிகாட்டி\s*மதிப்பு)[^:\r\n]*[:\s]+(?:Rs\.?\s*)?([0-9,]+|-|Nil)', chunk_clean, re.I)
             mkt_norm = self._normalize_currency(mkt_m.group(1) if mkt_m else "-")
 
             # PR Number
-            pr_m = re.search(r'PR\s*Number[^:\r\n]*:\s*([^\r\n]+)', chunk, re.I)
+            pr_m = re.search(r'(?:PR\s*Number|முந்தைய\s*ஆவண\s*எண்|முந்தைய\s*ஆவணம்)[^:\r\n]*[:\s]+([^\r\n]+)', chunk_clean, re.I)
             pr_val = self._clean_field_val(pr_m.group(1)) if pr_m else "-"
 
             # Step 6: Nested Schedule Property Blocks
-            schedules = self._parse_schedules(chunk)
+            schedules = self._parse_schedules(chunk_clean)
 
             # Confidence Score
-            entry_conf = 0.95
+            entry_conf = 0.96
             if not exec_list or not claim_list:
-                entry_conf -= 0.10
+                entry_conf -= 0.08
             if cons_norm["amount_inr"] == 0 and "conveyance" in nature_name.lower():
-                entry_conf -= 0.05
+                entry_conf -= 0.04
 
             tx_list.append({
-                "sr": idx + 1,
+                "sr": len(tx_list) + 1,
                 "doc_no": doc_no,
                 "date": date_display,
                 "execution_date": exec_date_norm,
@@ -832,7 +1025,7 @@ class ECExtractor:
             std_status = "SEARCH_PERIOD_UNSPECIFIED"
 
         # Mortgages tracking
-        modt_docs = [t for t in tx_list if "mortgage" in t["nature"].lower() or "deposit of title" in t["nature"].lower()]
+        modt_docs = [t for t in tx_list if "mortgage" in t["nature"].lower() or "deposit of title" in t["nature"].lower() or "modt" in t["nature"].lower()]
         receipt_docs = [t for t in tx_list if "receipt" in t["nature"].lower() or "discharge" in t["nature"].lower()]
         
         open_mortgages_count = max(0, len(modt_docs) - len(receipt_docs))

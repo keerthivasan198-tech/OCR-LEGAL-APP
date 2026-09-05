@@ -255,24 +255,65 @@ async def export_data(data: dict):
     elif format_type == "csv":
         output = io.StringIO()
         writer = csv.writer(output)
-        writer.writerow(["Field Name", "Extracted Value", "Confidence"])
 
-        for k, v in extracted_fields.items():
-            if isinstance(v, dict):
-                val = v.get("value", "")
-                conf = v.get("confidence", "")
-                if isinstance(val, dict):
-                    for sub_k, sub_v in val.items():
-                        writer.writerow([f"{k}.{sub_k}", sub_v, conf])
+        is_ec = (doc_type == "ec") or ("transactions_table" in extracted_fields)
+        if is_ec:
+            writer.writerow([
+                "Sr", "Doc No/Year", "Execution Date", "Presentation Date", "Registration Date",
+                "Nature", "Consideration Value", "Market Value", "PR Number",
+                "Executant(s)", "Claimant(s)", "Schedule Details"
+            ])
+            tx_obj = extracted_fields.get("transactions_table", {})
+            tx_list = tx_obj.get("value", []) if isinstance(tx_obj, dict) else (tx_obj if isinstance(tx_obj, list) else [])
+            for tx in tx_list:
+                exec_d = tx.get("execution_date", {}).get("standard") if isinstance(tx.get("execution_date"), dict) else tx.get("date", "-")
+                pres_d = tx.get("presentation_date", {}).get("standard") if isinstance(tx.get("presentation_date"), dict) else exec_d
+                reg_d = tx.get("registration_date", {}).get("standard") if isinstance(tx.get("registration_date"), dict) else exec_d
+
+                sch_list = tx.get("schedules", [])
+                sch_summary = ""
+                if sch_list and isinstance(sch_list, list):
+                    s0 = sch_list[0]
+                    parts = []
+                    if s0.get("extent") and s0.get("extent") != "-": parts.append(s0["extent"])
+                    if s0.get("survey_no") and s0.get("survey_no") != "-": parts.append(f"Sy:{s0['survey_no']}")
+                    if s0.get("plot_no") and s0.get("plot_no") != "-": parts.append(f"Plot:{s0['plot_no']}")
+                    sch_summary = ", ".join(parts) or s0.get("property_type", "-")
+
+                writer.writerow([
+                    tx.get("sr", ""),
+                    tx.get("doc_no", "-"),
+                    exec_d,
+                    pres_d,
+                    reg_d,
+                    tx.get("nature", "-"),
+                    tx.get("consideration", "-"),
+                    tx.get("market_value", "-"),
+                    tx.get("pr_number", "-"),
+                    tx.get("executants", "-"),
+                    tx.get("claimants", "-"),
+                    sch_summary
+                ])
+        else:
+            writer.writerow(["Field Name", "Extracted Value", "Confidence"])
+            for k, v in extracted_fields.items():
+                if isinstance(v, dict):
+                    val = v.get("value", "")
+                    conf = v.get("confidence", "")
+                    if isinstance(val, dict):
+                        for sub_k, sub_v in val.items():
+                            writer.writerow([f"{k}.{sub_k}", sub_v, conf])
+                    else:
+                        writer.writerow([k, val, conf])
                 else:
-                    writer.writerow([k, val, conf])
-            else:
-                writer.writerow([k, str(v), "1.0"])
+                    writer.writerow([k, str(v), "1.0"])
 
+        filename = data.get("filename", doc_type)
+        base_name = os.path.splitext(filename)[0]
         return Response(
             content=output.getvalue(),
             media_type="text/csv",
-            headers={"Content-Disposition": f"attachment; filename={doc_type}_extracted.csv"}
+            headers={"Content-Disposition": f'attachment; filename="{base_name}_extracted.csv"'}
         )
 
     elif format_type == "txt":

@@ -1291,10 +1291,22 @@ function renderTableTab(extraction) {
         let rowsHtml = txList.map((tx, idx) => {
             const srNum = tx.sr || (idx + 1);
             const natureText = (tx.nature || "-").replace(/\n/g, "<br/>");
-            const noteHtml = tx.nature_note ? `<div class="mt-1 text-[10px] text-slate-500 italic leading-snug">${escapeHtml(tx.nature_note)}</div>` : "";
+            const noteHtml = tx.nature_note ? `<div class="mt-1 text-[10px] text-amber-700 bg-amber-50/70 px-1.5 py-0.5 rounded border border-amber-200/60 italic leading-snug">${escapeHtml(tx.nature_note)}</div>` : "";
             const execHtml = (tx.executants || tx.parties || "-").replace(/\n/g, "<br/>");
             const claimHtml = (tx.claimants || "-").replace(/\n/g, "<br/>");
             const consText = tx.consideration || "-";
+            const mktText = tx.market_value || "-";
+            const prText = tx.pr_number || "-";
+            const schedules = tx.schedules || [];
+            let schSummary = "";
+            if (schedules.length > 0) {
+                const s0 = schedules[0];
+                const parts = [];
+                if (s0.extent && s0.extent !== '-') parts.push(s0.extent);
+                if (s0.survey_no && s0.survey_no !== '-') parts.push(`Sy:${s0.survey_no}`);
+                if (s0.plot_no && s0.plot_no !== '-') parts.push(`Plot:${s0.plot_no}`);
+                schSummary = parts.join(", ") || (s0.property_type || "House Site");
+            }
 
             return `
             <tr class="hover:bg-slate-50/80 transition-colors">
@@ -1305,9 +1317,12 @@ function renderTableTab(extraction) {
                     <div class="font-semibold text-slate-900">${natureText}</div>
                     ${noteHtml}
                 </td>
-                <td class="p-2.5 text-slate-700 text-[11px] leading-relaxed max-w-[200px]">${execHtml}</td>
+                <td class="p-2.5 text-slate-700 text-[11px] leading-relaxed max-w-[180px]">${execHtml}</td>
                 <td class="p-2.5 text-slate-700 text-[11px] leading-relaxed max-w-[180px]">${claimHtml}</td>
                 <td class="p-2.5 font-semibold text-emerald-700 whitespace-nowrap text-xs font-mono">${escapeHtml(consText)}</td>
+                <td class="p-2.5 font-semibold text-slate-700 whitespace-nowrap text-xs font-mono">${escapeHtml(mktText)}</td>
+                <td class="p-2.5 font-semibold text-indigo-700 whitespace-nowrap text-xs font-mono">${escapeHtml(prText)}</td>
+                <td class="p-2.5 text-slate-600 text-[10px] leading-snug max-w-[160px]">${escapeHtml(schSummary || "-")}</td>
             </tr>
             `;
         }).join("");
@@ -1315,8 +1330,8 @@ function renderTableTab(extraction) {
         container.innerHTML = `
             <div class="mb-3 flex items-center justify-between">
                 <div>
-                    <h4 class="text-xs font-bold text-slate-900">Registered Entries (Form 15) — Full Detail</h4>
-                    <p class="text-[11px] text-slate-500">${txList.length} Transactions Extracted Across All Pages</p>
+                    <h4 class="text-xs font-bold text-slate-900">Registered Entries (Form 15) — Full Detail Table</h4>
+                    <p class="text-[11px] text-slate-500">${txList.length} Transactions Extracted Across All Pages (Strict Column Ordering)</p>
                 </div>
                 <span class="px-2.5 py-1 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg text-xs font-semibold">
                     ${txList.length} Entries
@@ -1326,13 +1341,16 @@ function renderTableTab(extraction) {
                 <table class="w-full text-left text-xs border-collapse">
                     <thead class="bg-slate-100 text-slate-900 font-bold sticky top-0 shadow-2xs border-b border-slate-200">
                         <tr>
-                            <th class="p-2.5 border-b border-slate-200 text-center w-10">Sr.</th>
+                            <th class="p-2.5 border-b border-slate-200 text-center w-8">Sr.</th>
                             <th class="p-2.5 border-b border-slate-200">Doc No/Year</th>
                             <th class="p-2.5 border-b border-slate-200">Date</th>
                             <th class="p-2.5 border-b border-slate-200">Nature</th>
                             <th class="p-2.5 border-b border-slate-200">Executant(s)</th>
                             <th class="p-2.5 border-b border-slate-200">Claimant(s)</th>
                             <th class="p-2.5 border-b border-slate-200">Consideration Value</th>
+                            <th class="p-2.5 border-b border-slate-200">Market Value</th>
+                            <th class="p-2.5 border-b border-slate-200">PR Number</th>
+                            <th class="p-2.5 border-b border-slate-200">Schedule Details</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-slate-200 bg-white">
