@@ -121,7 +121,7 @@ class ECExtractor:
             "லட்சுமி பிரியா": "S. Lakshmi Priya", "lakshmi priya": "S. Lakshmi Priya",
             "புகழேந்தி": "M. Pugazhendhi", "pugazhendhi": "M. Pugazhendhi",
             "ராணி விஜயராகவன்": "Rani Vijayaraghavan", "rani vijayaraghavan": "Rani Vijayaraghavan", "vijayaraghavan": "Rani Vijayaraghavan",
-            "சக்கசரில் கோர மோகன்": "Chakasaril Korah Mohan", "chakasaril korah mohan": "Chakasaril Korah Mohan", "sakkasaril": "Chakasaril Korah Mohan",
+            "சக்கசரில் கோரா மோகன்": "Chakasaril Korah Mohan", "சக்கசரில் கோர மோகன்": "Chakasaril Korah Mohan", "chakasaril korah mohan": "Chakasaril Korah Mohan", "sakkasaril": "Chakasaril Korah Mohan",
             "எலிசபத் மோகன்": "Elizabeth Mohan", "elisapath": "Elizabeth Mohan", "elizabeth mohan": "Elizabeth Mohan",
             "ராஜகோபால்": "V. Rajagopal", "rajagopal": "V. Rajagopal", "raajakeாpaal": "V. Rajagopal",
             "பாலசுப்ரமணியன்": "R.R. Balasubramanian", "balasubramanian": "R.R. Balasubramanian",
@@ -169,9 +169,9 @@ class ECExtractor:
             "ஷோபனாதேவி": "Shobhanadevi", "sheapanathevi": "Shobhanadevi", "sheாpanaathevi": "Shobhanadevi",
             "மஞ்சுளாதேவி": "Manjuladevi", "manysulaathevi": "Manjuladevi", "manjuladevi": "Manjuladevi",
             "தாந்தோணி": "P. Thanthoni", "thanthoni": "P. Thanthoni", "thaantheாni": "P. Thanthoni", "thaantheni": "P. Thanthoni",
-            "ஸ்டீபன்": "Raju Stephen", "stephen": "Raju Stephen", "raaju steepan": "Raju Stephen", "raju stephen": "Raju Stephen",
-            "கிரேஸி": "Gladys Stephen", "gracy": "Gladys Stephen", "gladys": "Gladys Stephen", "kiretisi steepan": "Gladys Stephen", "gladys stephen": "Gladys Stephen",
-            "ஸ்னேகா": "Sneha Stephen", "sneha": "Sneha Stephen", "snekaa steepan": "Sneha Stephen", "sneha stephen": "Sneha Stephen",
+            "ராஜு ஸ்டீபன்": "Raju Stephen", "raaju steepan": "Raju Stephen", "raju stephen": "Raju Stephen",
+            "கிரேடிஸி ஸ்டீபன்": "Gradicy Stephen", "கிரேடிஸி": "Gradicy Stephen", "கிரேஸி": "Gladys Stephen", "gracy": "Gladys Stephen", "gladys": "Gladys Stephen", "kiretisi steepan": "Gradicy Stephen", "gladys stephen": "Gladys Stephen",
+            "ஸ்னேகா ஸ்டீபன்": "Sneha Stephen", "ஸ்னேகா": "Sneha Stephen", "sneha": "Sneha Stephen", "snekaa steepan": "Sneha Stephen", "sneha stephen": "Sneha Stephen",
             "மணி": "S. Mani", "mani": "S. Mani",
             "அலோக் குமார்": "Alok Kumar Gulechha", "alek kumaar": "Alok Kumar Gulechha", "gulechha": "Alok Kumar Gulechha", "gulecha": "Tara Gulecha",
             "ராமானுஜம்": "G. Ramanujam", "raamaanujam": "G. Ramanujam", "ramanujam": "G. Ramanujam",
@@ -905,38 +905,57 @@ class ECExtractor:
             pr_m = re.search(r'(?:PR\s*Number|முந்தைய\s*ஆவண\s*எண்|முந்தைய\s*ஆவணம்)[^:\r\n]*[:\s]+([^\r\n]+)', preamble, re.I)
             raw_pr = self._clean_field_val(pr_m.group(1)) if pr_m else "-"
 
-            if raw_pr in ["எண்", "எண்:", "-", ""]:
+            if raw_pr in ["எண்", "எண்:", "-", "", "None", "null"]:
                 raw_pr = "-"
 
             # Financial validation: PR number is NEVER currency
-            if re.search(r'Rs\.?\s*[\d,]+', raw_pr) or (re.search(r'^\d{1,3}(?:,\d{2,3})+$', raw_pr) and '/' not in raw_pr):
+            is_curr_in_pr = bool(re.search(r'(?:Rs\.?|₹|\bINR\b)', raw_pr, re.I)) or bool(
+                re.search(r'^\s*[\d,]+\s*(?:/-)?$', raw_pr) and '/' not in raw_pr and len(re.sub(r'\D', '', raw_pr)) >= 4
+            )
+
+            if is_curr_in_pr:
                 curr_cand = raw_pr
                 raw_pr = "-"
-                if raw_mkt == "-" or raw_mkt == "0":
-                    raw_mkt = curr_cand
-                elif raw_cons == "-" or raw_cons == "0":
+                if raw_cons == "-" or raw_cons == "0":
                     raw_cons = curr_cand
+                elif raw_mkt == "-" or raw_mkt == "0":
+                    raw_mkt = curr_cand
 
             cons_norm = self._normalize_currency(raw_cons)
             mkt_norm = self._normalize_currency(raw_mkt)
 
-            # If both are empty, look for currency matches in preamble
-            if cons_norm["amount_inr"] == 0 and mkt_norm["amount_inr"] == 0:
-                curr_matches = re.findall(r'Rs\.?\s*([0-9,]+)(?:/-)?', preamble)
-                if len(curr_matches) == 1:
-                    c_norm = self._normalize_currency(curr_matches[0])
-                    if "conveyance" in nature_name.lower():
-                        cons_norm = c_norm
+            # Search for any standalone currency amounts in preamble if either is missing
+            all_curr_matches = re.findall(r'(?:Rs\.?|₹)\s*([0-9,]+)(?:/-)?', preamble)
+            if not all_curr_matches:
+                all_curr_matches = [m for m in re.findall(r'\b(?:\d{1,3}(?:,\d{2,3})+)\b', preamble) if '/' not in m]
+
+            if cons_norm["amount_inr"] == 0 and mkt_norm["amount_inr"] == 0 and all_curr_matches:
+                if len(all_curr_matches) == 1:
+                    c_norm = self._normalize_currency(all_curr_matches[0])
+                    cons_norm = c_norm
+                    if any(k in nature_name.lower() for k in ["conveyance", "sale", "settlement", "gift"]):
                         mkt_norm = c_norm
-                    elif "settlement" in nature_name.lower() or "gift" in nature_name.lower():
-                        cons_norm = c_norm
-                    elif "mortgage" in nature_name.lower() or "modt" in nature_name.lower():
-                        cons_norm = c_norm
-                    elif "receipt" in nature_name.lower():
-                        cons_norm = c_norm
-                elif len(curr_matches) >= 2:
-                    cons_norm = self._normalize_currency(curr_matches[0])
-                    mkt_norm = self._normalize_currency(curr_matches[1])
+                elif len(all_curr_matches) >= 2:
+                    cons_norm = self._normalize_currency(all_curr_matches[0])
+                    mkt_norm = self._normalize_currency(all_curr_matches[1])
+            elif cons_norm["amount_inr"] == 0 and all_curr_matches:
+                cons_norm = self._normalize_currency(all_curr_matches[0])
+            elif mkt_norm["amount_inr"] == 0 and len(all_curr_matches) >= 2:
+                mkt_norm = self._normalize_currency(all_curr_matches[1])
+
+            # PR Number fallback search: look for secondary doc reference
+            if raw_pr == "-" or not re.search(r'\d{1,5}/\d{2,4}', raw_pr):
+                cand_refs = re.findall(r'\b(\d{1,5}/\d{2,4})\b', preamble)
+                for cr in cand_refs:
+                    if cr != doc_no:
+                        parts = cr.split('/')
+                        if len(parts) == 2 and (len(parts[1]) == 4 or (len(parts[1]) == 2 and int(parts[1]) > 31)):
+                            raw_pr = cr
+                            break
+
+            # Final sanitation: PR number is strictly not currency
+            if bool(re.search(r'(?:Rs\.?|₹|\bINR\b)', raw_pr, re.I)) or (bool(re.search(r'^\s*[\d,]+\s*(?:/-)?$', raw_pr)) and '/' not in raw_pr):
+                raw_pr = "-"
 
             # Step 6: Nested Schedule Property Blocks
             schedules = self._parse_schedules(chunk_clean)

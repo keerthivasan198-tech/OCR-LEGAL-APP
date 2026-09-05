@@ -597,6 +597,22 @@ function escapeHtml(str) {
         .replace(/'/g, "&#039;");
 }
 
+function sanitizeTxFinancials(tx) {
+    let pr = (tx.pr_number || "-").toString().trim();
+    let cons = (tx.consideration || "-").toString().trim();
+    let mkt = (tx.market_value || "-").toString().trim();
+
+    // Check if PR number erroneously contains currency
+    if (/Rs\.?|₹|\bINR\b/i.test(pr) || (/^\d{1,3}(?:,\d{2,3})+$/.test(pr) && !pr.includes('/'))) {
+        const currVal = pr.startsWith('Rs.') || pr.startsWith('₹') ? pr : `Rs. ${pr}/-`;
+        if (cons === '-' || cons === '0') cons = currVal;
+        if (mkt === '-' || mkt === '0') mkt = currVal;
+        pr = "-";
+    }
+
+    return { pr, cons, mkt };
+}
+
 function renderFieldsTab(fields) {
     const container = document.getElementById("extracted-fields-container");
     if (!container) return;
@@ -1011,20 +1027,25 @@ function renderECFieldsLayout(fields, container) {
                         </div>
 
                         <!-- Financial & PR Linkage -->
-                        <div class="grid grid-cols-1 md:grid-cols-3 gap-2 text-[11px] bg-emerald-50/30 p-2 rounded-lg border border-emerald-100">
-                            <div>
-                                <span class="text-slate-500 text-[10px] block">Consideration:</span>
-                                <b class="text-emerald-800 font-mono">${escapeHtml(tx.consideration || "-")}</b>
+                        ${(() => {
+                            const fin = sanitizeTxFinancials(tx);
+                            return `
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-2 text-[11px] bg-emerald-50/30 p-2 rounded-lg border border-emerald-100">
+                                <div>
+                                    <span class="text-slate-500 text-[10px] block">Consideration:</span>
+                                    <b class="text-emerald-800 font-mono">${escapeHtml(fin.cons)}</b>
+                                </div>
+                                <div>
+                                    <span class="text-slate-500 text-[10px] block">Market Value:</span>
+                                    <b class="text-slate-700 font-mono">${escapeHtml(fin.mkt)}</b>
+                                </div>
+                                <div>
+                                    <span class="text-slate-500 text-[10px] block">PR Number:</span>
+                                    <b class="text-indigo-700 font-mono">${escapeHtml(fin.pr)}</b>
+                                </div>
                             </div>
-                            <div>
-                                <span class="text-slate-500 text-[10px] block">Market Value:</span>
-                                <b class="text-slate-700 font-mono">${escapeHtml(tx.market_value || "-")}</b>
-                            </div>
-                            <div>
-                                <span class="text-slate-500 text-[10px] block">PR Number:</span>
-                                <b class="text-indigo-700 font-mono">${escapeHtml(tx.pr_number || "-")}</b>
-                            </div>
-                        </div>
+                            `;
+                        })()}
 
                         <!-- Schedule Property Sub-blocks (Step 6) -->
                         ${schedules.length > 0 ? `
@@ -1294,9 +1315,10 @@ function renderTableTab(extraction) {
             const noteHtml = tx.nature_note ? `<div class="mt-1 text-[10px] text-amber-700 bg-amber-50/70 px-1.5 py-0.5 rounded border border-amber-200/60 italic leading-snug">${escapeHtml(tx.nature_note)}</div>` : "";
             const execHtml = (tx.executants || tx.parties || "-").replace(/\n/g, "<br/>");
             const claimHtml = (tx.claimants || "-").replace(/\n/g, "<br/>");
-            const consText = tx.consideration || "-";
-            const mktText = tx.market_value || "-";
-            const prText = tx.pr_number || "-";
+            const fin = sanitizeTxFinancials(tx);
+            const consText = fin.cons;
+            const mktText = fin.mkt;
+            const prText = fin.pr;
             const schedules = tx.schedules || [];
             let schSummary = "";
             if (schedules.length > 0) {
