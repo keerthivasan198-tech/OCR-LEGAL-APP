@@ -41,6 +41,7 @@ class ECExtractor:
             "stet peng": "State Bank of India",
             "இந்தியன் ஓவர்சீஸ் பேங்க்": "Indian Overseas Bank",
             "indian overseas bank": "Indian Overseas Bank",
+            "inthiyan ovarsees peng": "Indian Overseas Bank",
             "inthiyan ovarsees": "Indian Overseas Bank",
             "சிட்டி யூனியன் பேங்க் லிமிடெட்": "City Union Bank Limited",
             "சிட்டி யூனியன் பேங்க்": "City Union Bank Limited",
@@ -58,6 +59,7 @@ class ECExtractor:
             "ஸ்டாண்டர்ட் சார்ட்டர்ட் பேங்க்": "Standard Chartered Bank",
             "standard chartered bank": "Standard Chartered Bank",
             "standard; chartered": "Standard Chartered Bank",
+            "chartered bank": "Standard Chartered Bank",
             "m/s.standard": "Standard Chartered Bank",
             "கனரா பேங்க்": "Canara Bank",
             "canara bank": "Canara Bank",
@@ -72,172 +74,109 @@ class ECExtractor:
             "சென்னை மாநகர வளர்ச்சி குழுமம்": "Chennai Metropolitan Development Authority",
             "சென்னை பெருநகர வளர்ச்சி குழுமம்": "Chennai Metropolitan Development Authority",
             "chennai metropolitan development authority": "Chennai Metropolitan Development Authority",
+            "metropolitan development authority": "Chennai Metropolitan Development Authority",
+            "metreாpeாlisan": "Chennai Metropolitan Development Authority",
             "புரசவாக்கம்பர்மனன்ட் பண்ட்லிட்": "Purasawalkam Permanent Fund Ltd",
             "புரசவாக்கம் பர்மனென்ட் பண்ட் லிட்": "Purasawalkam Permanent Fund Ltd",
+            "purasavaakkam parmanend pand lit": "Purasawalkam Permanent Fund Ltd",
             "purasavaakkam parmanend": "Purasawalkam Permanent Fund Ltd",
             "the tamilnadu industrial investment corporation limited": "The Tamilnadu Industrial Investment Corporation Limited",
+            "the tamilnadu industrial investment corporation ltd employees provident fund": "The Tamilnadu Industrial Investment Corporation Limited Employees Provident Fund",
+            "the tamilnadu industrial investment corporation ltd": "The Tamilnadu Industrial Investment Corporation Limited",
             "tamilnadu industrial": "The Tamilnadu Industrial Investment Corporation Limited",
+            "investment corporation limited": "The Tamilnadu Industrial Investment Corporation Limited",
             "அக்னி எஸ்டேட்ஸ் & பவுண்டேஷன் பிரைவேட் லிமிடெட்": "Agni Estates & Foundations Pvt Ltd",
             "அக்னி எஸ்டேட்ஸ் & பவுண்டேஷன்ஸ்": "Agni Estates & Foundations Pvt Ltd",
             "agni estates & foundatiosn pvt ltd": "Agni Estates & Foundations Pvt Ltd",
             "agni estates & foundations pvt ltd": "Agni Estates & Foundations Pvt Ltd",
+            "agni estates &": "Agni Estates & Foundations Pvt Ltd",
             "agni estets": "Agni Estates & Foundations Pvt Ltd",
             "அக்னி எஸ்ேடேட்ஸ்": "Agni Estates & Foundations Pvt Ltd",
             "சென்னை அக்னி பிஸ்னஸ்": "Chennai Agni Business & Management Services Pvt Ltd",
             "chennai agni business": "Chennai Agni Business & Management Services Pvt Ltd",
             "sennai agni": "Chennai Agni Business & Management Services Pvt Ltd",
+            "pisnas": "Chennai Agni Business & Management Services Pvt Ltd",
             "சென்னை m/s.lason india private limited": "M/s Lason India Private Limited",
             "m/s.lason india private limited": "M/s Lason India Private Limited",
+            "m/s lason india private limited": "M/s Lason India Private Limited",
             "lason india": "M/s Lason India Private Limited",
             "chennai m.a.c. charities": "Chennai M.A.C. Charities",
+            "chennai m/s. lason": "M/s Lason India Private Limited",
             "சென்னை m.a.c. சாரிட்டீஸ்": "Chennai M.A.C. Charities",
+            "m.a.c.charities": "Chennai M.A.C. Charities",
             "classic foundations pvt ltd": "Classic Foundations Pvt Ltd",
             "கிளாசிக் பவுண்டேஷன்ஸ்": "Classic Foundations Pvt Ltd",
         }
 
         # Known individuals & canonical names
         self.KNOWN_PERSONS = {
-            "ரவி": "Ravi",
-            "ravi": "Ravi",
-            "ரமேஷ்": "Ramesh",
-            "ramesh": "Ramesh",
-            "குப்பராஜ்": "V. Kuppa Raj",
-            "kupparaaj": "V. Kuppa Raj",
-            "kuppa raj": "V. Kuppa Raj",
-            "ஜெயலட்சுமி": "V. Jayalakshmi",
-            "jeyalashmi": "V. Jayalakshmi",
-            "jayalakshmi": "V. Jayalakshmi",
-            "அஸ்வின் ராஜ்": "V. Ashwin Raj",
-            "asvin raaj": "V. Ashwin Raj",
-            "ashvin raaj": "V. Ashwin Raj",
-            "ashwin raj": "V. Ashwin Raj",
-            "சைலேஷ் ராஜ்": "V. Sailesh Raj",
-            "sailesh raaj": "V. Sailesh Raj",
-            "sailesh raj": "V. Sailesh Raj",
-            "தர்ஷன் ராஜ்": "V. Tharshan Raj",
-            "tharshan raaj": "V. Tharshan Raj",
-            "tharshan raj": "V. Tharshan Raj",
-            "ராஜேந்திரன்": "K. Rajendran",
-            "rajendran": "K. Rajendran",
-            "லட்சுமி பிரியா": "S. Lakshmi Priya",
-            "lakshmi priya": "S. Lakshmi Priya",
-            "புகழேந்தி": "M. Pugazhendhi",
-            "pugazhendhi": "M. Pugazhendhi",
-            "ராணி விஜயராகவன்": "Rani Vijayaraghavan",
-            "rani vijayaraghavan": "Rani Vijayaraghavan",
-            "vijayaraghavan": "Rani Vijayaraghavan",
-            "சக்கசரில் கோர மோகன்": "Chakasaril Korah Mohan",
-            "chakasaril korah mohan": "Chakasaril Korah Mohan",
-            "sakkasaril": "Chakasaril Korah Mohan",
-            "எலிசபத் மோகன்": "Elizabeth Mohan",
-            "elisapath": "Elizabeth Mohan",
-            "elizabeth mohan": "Elizabeth Mohan",
-            "ராஜகோபால்": "V. Rajagopal",
-            "rajagopal": "V. Rajagopal",
-            "பாலசுப்ரமணியன்": "R.R. Balasubramanian",
-            "balasubramanian": "R.R. Balasubramanian",
-            "இந்திரா பாலசுப்ரமணியன்": "Indira Balasubramanian",
-            "indira balasubramanian": "Indira Balasubramanian",
-            "உமேஷ்": "Umesh M. Tahilramani",
-            "umesh": "Umesh M. Tahilramani",
-            "tahilramani": "Umesh M. Tahilramani",
-            "நீது": "Neetu M. Hinduja",
-            "neetu": "Neetu M. Hinduja",
-            "hinduja": "Neetu M. Hinduja",
-            "மனோகர்லால்": "Manoharlal Hinduja",
-            "manoharlal": "Manoharlal Hinduja",
-            "manohar": "Manoharlal Hinduja",
-            "manekarlaal": "Manoharlal Hinduja",
-            "நவநீதகிருஷ்ணன்": "P.V. Navaneethakrishnan",
-            "navaneethakrishnan": "P.V. Navaneethakrishnan",
-            "navaneethakirushnan": "P.V. Navaneethakrishnan",
-            "லலிதா": "N. Lalitha",
-            "lalitha": "N. Lalitha",
-            "சுனில்": "Sunil Wadhwani",
-            "sunil": "Sunil Wadhwani",
-            "wadhwani": "Sunil Wadhwani",
-            "vathvaani": "Sunil Wadhwani",
-            "திருவேதி": "Ashok Thiruvedi",
-            "thiruvedi": "Ashok Thiruvedi",
-            "thiruvethi": "Ashok Thiruvedi",
-            "john baptist lasrado": "John Baptist Lasrado",
-            "flavy daisy lasrado": "Flavy Daisy Lasrado",
-            "lasardo": "Flavy Daisy Lasrado",
-            "வள்ளியம்மை": "L. Valliammai",
-            "valliyammai": "L. Valliammai",
-            "valliyammaal": "L. Valliammai",
-            "அழகப்பன்": "Lakshmanan Alagappan",
-            "alagappan": "Lakshmanan Alagappan",
-            "lashmanan": "Lakshmanan Alagappan",
-            "அண்ணாமலை": "L. Annamalai",
-            "annaamalai": "L. Annamalai",
-            "annamalai": "L. Annamalai",
-            "ஹாண்டா": "Usha Handa",
-            "handa": "Usha Handa",
-            "andaa": "Usha Handa",
-            "ரகுராம்": "Raghuram",
-            "rakuraam": "Raghuram",
-            "raghuram": "Raghuram",
-            "லஷ்மண பிரபு": "Lakshmana Prabhu",
-            "lashmana pirapu": "Lakshmana Prabhu",
-            "lakshmana prabhu": "Lakshmana Prabhu",
-            "சுகுமாரன்": "Sukumaran",
-            "sukumaaran": "Sukumaran",
-            "sukumaran": "Sukumaran",
-            "மங்கா தேவி": "M. Manga Devi",
-            "mangaa thevi": "M. Manga Devi",
-            "manga devi": "M. Manga Devi",
-            "பிரகாஷ்": "M. Buchi Prakash",
-            "pirakaash": "M. Buchi Prakash",
-            "buchi prakash": "M. Buchi Prakash",
-            "pushi": "M. Buchi Prakash",
-            "ஊர்மிளா": "Urmila Prakash",
-            "oormilaa": "Urmila Prakash",
-            "urmila": "Urmila Prakash",
-            "விமலாதேவி": "N. Vimaladevi",
-            "vimalaathevi": "N. Vimaladevi",
-            "vimaladevi": "N. Vimaladevi",
-            "சுஜாதா": "Sujatha",
-            "sujaathaa": "Sujatha",
-            "தீபா": "Deepa",
-            "theepaa": "Deepa",
-            "சுமதி": "Sumathi",
-            "sumathi": "Sumathi",
-            "மகேஷ்": "Mahesh",
-            "makesh": "Mahesh",
-            "நந்தகுமார்": "Nandakumar",
-            "nanthakumaar": "Nandakumar",
-            "மகேந்திரகுமார்": "Mahendrakumar",
-            "makenthirakumaar": "Mahendrakumar",
-            "சுதாகர்": "Sudhakar",
-            "suthaakar": "Sudhakar",
-            "ஷோபனாதேவி": "Shobhanadevi",
-            "sheapanathevi": "Shobhanadevi",
-            "sheாpanaathevi": "Shobhanadevi",
-            "மஞ்சுளாதேவி": "Manjuladevi",
-            "manysulaathevi": "Manjuladevi",
-            "விஸ்வேஸ்வர ரெட்டி": "P. Visweswara Reddy",
-            "visvesvara": "P. Visweswara Reddy",
-            "visweswara": "P. Visweswara Reddy",
-            "தாந்தோணி": "P. Thanthoni",
-            "thaantheni": "P. Thanthoni",
-            "thaantheாni": "P. Thanthoni",
-            "thanthoni": "P. Thanthoni",
-            "ராஜு ஸ்டீபன்": "Raju Stephen",
-            "raaju steepan": "Raju Stephen",
-            "raju stephen": "Raju Stephen",
-            "கிரேடிஸி ஸ்டீபன்": "Gladys Stephen",
-            "kiretisi steepan": "Gladys Stephen",
-            "gladys stephen": "Gladys Stephen",
-            "ஸ்னேகா ஸ்டீபன்": "Sneha Stephen",
-            "snekaa steepan": "Sneha Stephen",
-            "sneha stephen": "Sneha Stephen",
-            "சுஷீலா": "Sushila Goklaney",
-            "sushila": "Sushila Goklaney",
-            "goklaney": "Sushila Goklaney",
-            "பத்தினி": "Prakash (Wife)",
-            "paththini": "Prakash (Wife)",
-            "மணி": "Mani",
+            "ரவி": "Ravi", "ravi": "Ravi",
+            "ரமேஷ்": "Ramesh", "ramesh": "Ramesh",
+            "குப்பராஜ்": "V. Kuppa Raj", "kupparaaj": "V. Kuppa Raj", "kuppa raj": "V. Kuppa Raj", "kuppa raaj": "V. Kuppa Raj",
+            "ஜெயலட்சுமி": "V. Jayalakshmi", "jeyalashmi": "V. Jayalakshmi", "jayalakshmi": "V. Jayalakshmi",
+            "அஸ்வின் ராஜ்": "V. Ashwin Raj", "asvin raaj": "V. Ashwin Raj", "ashvin raaj": "V. Ashwin Raj", "ashwin raj": "V. Ashwin Raj",
+            "சைலேஷ் ராஜ்": "V. Sailesh Raj", "sailesh raaj": "V. Sailesh Raj", "sailesh raj": "V. Sailesh Raj", "saylesh raaj": "V. Sailesh Raj",
+            "தர்ஷன் ராஜ்": "V. Tharshan Raj", "tharshan raaj": "V. Tharshan Raj", "tharshan raj": "V. Tharshan Raj",
+            "ராஜேந்திரன்": "K. Rajendran", "rajendran": "K. Rajendran",
+            "லட்சுமி பிரியா": "S. Lakshmi Priya", "lakshmi priya": "S. Lakshmi Priya",
+            "புகழேந்தி": "M. Pugazhendhi", "pugazhendhi": "M. Pugazhendhi",
+            "ராணி விஜயராகவன்": "Rani Vijayaraghavan", "rani vijayaraghavan": "Rani Vijayaraghavan", "vijayaraghavan": "Rani Vijayaraghavan",
+            "சக்கசரில் கோர மோகன்": "Chakasaril Korah Mohan", "chakasaril korah mohan": "Chakasaril Korah Mohan", "sakkasaril": "Chakasaril Korah Mohan",
+            "எலிசபத் மோகன்": "Elizabeth Mohan", "elisapath": "Elizabeth Mohan", "elizabeth mohan": "Elizabeth Mohan",
+            "ராஜகோபால்": "V. Rajagopal", "rajagopal": "V. Rajagopal", "raajakeாpaal": "V. Rajagopal",
+            "பாலசுப்ரமணியன்": "R.R. Balasubramanian", "balasubramanian": "R.R. Balasubramanian",
+            "இந்திரா பாலசுப்ரமணியன்": "Indira Balasubramanian", "indira balasubramanian": "Indira Balasubramanian",
+            "உமேஷ்": "Umesh M. Tahilramani", "umesh": "Umesh M. Tahilramani", "tahilramani": "Umesh M. Tahilramani",
+            "நீது": "Neetu M. Hinduja", "neetu": "Neetu M. Hinduja", "hinduja": "Neetu M. Hinduja", "inthujaa": "Neetu M. Hinduja",
+            "மனோகர்லால்": "Manoharlal Hinduja", "manoharlal": "Manoharlal Hinduja", "maneாkarlaal": "Manoharlal Hinduja", "manohar": "Manoharlal Hinduja",
+            "நவநீதகிருஷ்ணன்": "P.V. Navaneethakrishnan", "navaneethakrishnan": "P.V. Navaneethakrishnan", "navaneethakirushnan": "P.V. Navaneethakrishnan",
+            "லலிதா": "N. Lalitha", "lalitha": "N. Lalitha",
+            "சுனில்": "Sunil Wadhwani", "sunil": "Sunil Wadhwani", "wadhwani": "Sunil Wadhwani", "vathvaani": "Sunil Wadhwani",
+            "திருவேதி": "Ashok Thiruvedi", "thiruvedi": "Ashok Thiruvedi", "thiruvethi": "Ashok Thiruvedi",
+            "john baptist lasrado": "John Baptist Lasrado", "flavy daisy lasrado": "Flavy Daisy Lasrado", "lasrado": "John Baptist Lasrado", "lasardo": "Flavy Daisy Lasrado",
+            "வள்ளியம்மை": "L. Valliammai", "valliyammai": "L. Valliammai", "valliyammaal": "L. Valliammai",
+            "அழகப்பன்": "Lakshmanan Alagappan", "alagappan": "Lakshmanan Alagappan", "lashmanan": "Lakshmanan Alagappan",
+            "அண்ணாமலை": "L. Annamalai", "annaamalai": "L. Annamalai", "annamalai": "L. Annamalai",
+            "ஹாண்டா": "Usha Handa", "handa": "Usha Handa", "ushaa andaa": "Usha Handa", "andaa": "Usha Handa",
+            "ரகுராம்": "R.S.K. Raghuram", "rakuraam": "R.S.K. Raghuram", "raghuram": "R.S.K. Raghuram",
+            "லஷ்மண பிரபு": "R.S.K. Lakshmana Prabhu", "lashmana pirapu": "R.S.K. Lakshmana Prabhu", "lakshmana prabhu": "R.S.K. Lakshmana Prabhu",
+            "சுகுமாரன்": "R.S.K. Sukumaran", "sukumaaran": "R.S.K. Sukumaran", "sukumaran": "R.S.K. Sukumaran",
+            "மங்கா தேவி": "M. Manga Devi", "mangaa thevi": "M. Manga Devi", "manga devi": "M. Manga Devi", "mangaathevi": "M. Manga Devi",
+            "பிரகாஷ்": "M. Buchi Prakash", "pirakaash": "M. Buchi Prakash", "buchi prakash": "M. Buchi Prakash", "pushi": "M. Buchi Prakash",
+            "ஊர்மிளா": "Urmila Prakash", "oormilaa": "Urmila Prakash", "urmila": "Urmila Prakash",
+            "உமையாள்": "Umayal Ramasamy", "umayal": "Umayal Ramasamy", "umayalraamasaami": "Umayal Ramasamy", "umayal raamasaami": "Umayal Ramasamy",
+            "கிருஷ்ணன்": "N. Krishnan", "kirushnan": "N. Krishnan", "krishnan": "N. Krishnan",
+            "உத்ரா": "Uthra Prakash", "uthra": "Uthra Prakash",
+            "பிரத்யும்னா": "Pradyumna Prakash Rao", "pradyumna": "Pradyumna Prakash Rao",
+            "சுவாமி": "B.N. Swamy", "suvaami": "B.N. Swamy", "swamy": "B.N. Swamy",
+            "பத்தினி": "Prakash Bathini", "bathini": "Prakash Bathini",
+            "பூஜா": "Pooja Lulla", "pooja": "Pooja Lulla", "poojaa lullaa": "Pooja Lulla",
+            "மதன்": "Madan Goklaney", "mathan": "Madan Goklaney", "goklaney": "Sushila Goklaney",
+            "சுஷீலா": "Sushila Goklaney", "sushila": "Sushila Goklaney", "sushilaa": "Sushila Goklaney",
+            "பாலாஜி": "T.G. Balaji", "balaji": "T.G. Balaji", "paalaaji": "T.G. Balaji",
+            "ஷீலா": "Sheela Lulla", "sheela": "Sheela Lulla", "sheelaa lullaa": "Sheela Lulla",
+            "பியா": "Piya Lulla", "piya": "Piya Lulla", "piyaa lullaa": "Piya Lulla",
+            "விஸ்வேஸ்வர ரெட்டி": "Dr. Visweswara Reddy", "visweswara": "Dr. Visweswara Reddy", "visvesvara": "Dr. Visweswara Reddy",
+            "சங்கீதா": "Dr. Sangeetha Visweswara Reddy", "sangeetha": "Dr. Sangeetha Visweswara Reddy", "sangeethaa": "Dr. Sangeetha Visweswara Reddy",
+            "விமலாதேவி": "N. Vimaladevi", "vimalaathevi": "N. Vimaladevi", "vimaladevi": "N. Vimaladevi",
+            "சுஜாதா": "Sujatha", "sujaathaa": "Sujatha",
+            "தீபா": "Deepa", "theepaa": "Deepa",
+            "சுமதி": "Sumathi", "sumathi": "Sumathi",
+            "மகேஷ்": "Mahesh", "makesh": "Mahesh",
+            "நந்தகுமார்": "Nandakumar", "nanthakumaar": "Nandakumar",
+            "மகேந்திரகுமார்": "Mahendrakumar", "makenthirakumaar": "Mahendrakumar",
+            "சுதாகர்": "Sudhakar", "suthaakar": "Sudhakar",
+            "ஷோபனாதேவி": "Shobhanadevi", "sheapanathevi": "Shobhanadevi", "sheாpanaathevi": "Shobhanadevi",
+            "மஞ்சுளாதேவி": "Manjuladevi", "manysulaathevi": "Manjuladevi", "manjuladevi": "Manjuladevi",
+            "தாந்தோணி": "P. Thanthoni", "thanthoni": "P. Thanthoni", "thaantheாni": "P. Thanthoni", "thaantheni": "P. Thanthoni",
+            "ஸ்டீபன்": "Raju Stephen", "stephen": "Raju Stephen", "raaju steepan": "Raju Stephen", "raju stephen": "Raju Stephen",
+            "கிரேஸி": "Gladys Stephen", "gracy": "Gladys Stephen", "gladys": "Gladys Stephen", "kiretisi steepan": "Gladys Stephen", "gladys stephen": "Gladys Stephen",
+            "ஸ்னேகா": "Sneha Stephen", "sneha": "Sneha Stephen", "snekaa steepan": "Sneha Stephen", "sneha stephen": "Sneha Stephen",
+            "மணி": "S. Mani", "mani": "S. Mani",
+            "அலோக் குமார்": "Alok Kumar Gulechha", "alek kumaar": "Alok Kumar Gulechha", "gulechha": "Alok Kumar Gulechha", "gulecha": "Tara Gulecha",
+            "ராமானுஜம்": "G. Ramanujam", "raamaanujam": "G. Ramanujam", "ramanujam": "G. Ramanujam",
+            "கிருஷ்ணம்மாள்": "R. Krishnammal", "kirushnammaal": "R. Krishnammal", "krishnammal": "R. Krishnammal",
+            "மோகன்": "R. Mohan", "meாkan": "R. Mohan", "mohan": "R. Mohan"
         }
 
         # Controlled vocabulary for Document Natures in Tamil Nadu Registration
@@ -277,9 +216,20 @@ class ECExtractor:
             return ""
         return re.sub(r'^[/:\-\s]+|[/:\-\s]+$', '', val).strip()
 
+    def _clean_boundary_str(self, val: str) -> str:
+        """Sanitizes boundary text, strictly stripping any trailing next-entry headers."""
+        if not val or val.strip() in ["-", ""]:
+            return "-"
+        s = re.sub(r'\s+', ' ', val).strip()
+        s = re.sub(r'\s+\d{1,3}\s+\d{1,2}-[A-Za-z]{3}-\d{4}.*$', '', s)
+        s = re.sub(r'\s+\d{1,5}/\d{4}.*$', '', s)
+        s = re.sub(r'\s+\d{1,3}\s+(?:Settlement|Conveyance|MODT|Receipt|Mortgage|Lease|Partition|Gift|Rectification|கிரைய|அடமான|விடுதலை|ரசீது|செட்டில்|பாகப்பிரி|ஆவணம்).*$', '', s)
+        s = re.sub(r'^[.\s,;:\-]+|[.\s,;:\-]+$', '', s)
+        return s if s else "-"
+
     def _normalize_currency(self, val_str: str) -> Dict[str, Any]:
         """Normalizes currency string into raw, integer rupees, and standard Indian formatted string."""
-        if not val_str or val_str.strip() in ["-", "Nil", "nil", "None"]:
+        if not val_str or val_str.strip() in ["-", "Nil", "nil", "None", "எண்", "எண்:"]:
             return {"raw": "-", "amount_inr": 0, "formatted": "-"}
         clean_digits = re.sub(r'[^0-9]', '', val_str)
         amount = int(clean_digits) if clean_digits else 0
@@ -308,7 +258,7 @@ class ECExtractor:
         }
 
     def _normalize_date(self, date_str: str) -> Dict[str, str]:
-        """Normalizes any date (DD-Mon-YYYY, DD/MM/YYYY, DD-MM-YYYY, YYYY-MM-DD) to standard DD-Mon-YYYY and ISO YYYY-MM-DD."""
+        """Normalizes any date to standard DD-Mon-YYYY and ISO YYYY-MM-DD."""
         if not date_str or date_str in ["-", ""]:
             return {"raw": "-", "standard": "-", "iso": "-"}
         
@@ -339,7 +289,7 @@ class ECExtractor:
                 "iso": f"{y}-{mm}-{dd}"
             }
 
-        # 2. DD/MM/YYYY or DD-MM-YYYY or DD.MM.YYYY (e.g. 12/03/2006, 05-08-2011)
+        # 2. DD/MM/YYYY or DD-MM-YYYY or DD.MM.YYYY
         m2 = re.match(r'(\d{1,2})[/\-\.](\d{1,2})[/\-\.](\d{4})', d_str)
         if m2:
             d, m, y = m2.groups()
@@ -384,7 +334,6 @@ class ECExtractor:
             return ""
 
         p_str = raw_name.strip()
-        # Remove OCR noise & artifacts
         p_str = re.sub(r'INFO:.*', '', p_str)
         p_str = re.sub(r'\b(?:\d{1,2}-[A-Za-z]{3}-\d{4}|\d{1,2}[/\-\.]\d{1,2}[/\-\.]\d{4})\b', '', p_str)
         p_str = re.sub(r'\b\d{1,5}/\d{4}\b', '', p_str)
@@ -417,12 +366,12 @@ class ECExtractor:
 
         # Extract role tags before checking names
         role = ""
-        if any(k in low for k in ['agent', 'ஏஜண்ட்', 'ஏஜெண்ட்', 'பவர்தாரர்']):
+        if any(k in low for k in ['agent', 'ஏஜண்ட்', 'ஏஜெண்ட்', 'பவர்தாரர்', 'ejend']):
             role = " (Agent)"
-            p_str = re.sub(r'\b(agent|ஏஜண்ட்|ஏஜெண்ட்|பவர்தாரர்)\b', '', p_str, flags=re.I).strip()
-        elif any(k in low for k in ['principal', 'பிரின்ஸ்பால்', 'முதல்வர்', 'முதல்வார்', 'muthalvar', 'muthalvaar']):
+            p_str = re.sub(r'\b(agent|ஏஜண்ட்|ஏஜெண்ட்|பவர்தாரர்|ejend)\b', '', p_str, flags=re.I).strip()
+        elif any(k in low for k in ['principal', 'பிரின்ஸ்பால்', 'முதல்வர்', 'முதல்வார்', 'muthalvar', 'muthalvaar', 'pirinspaal']):
             role = " (Principal)"
-            p_str = re.sub(r'\b(principal|பிரின்ஸ்பால்|முதல்வர்|முதல்வார்|muthalvar|muthalvaar)\b', '', p_str, flags=re.I).strip()
+            p_str = re.sub(r'\b(principal|பிரின்ஸ்பால்|முதல்வர்|முதல்வார்|muthalvar|muthalvaar|pirinspaal)\b', '', p_str, flags=re.I).strip()
             p_str = re.sub(r'முதல்வர்|முதல்வார்', '', p_str).strip()
         elif 'lessor' in low or 'குத்தகைக்கு விட்டவர்' in low:
             role = " (Lessor)"
@@ -444,13 +393,13 @@ class ECExtractor:
 
         low_clean = p_str.lower()
 
-        # Check known entities (sorted by length descending to prevent substring false matches)
+        # Check known entities
         sorted_entities = sorted(self.KNOWN_ENTITIES.items(), key=lambda x: len(x[0]), reverse=True)
         for k, v in sorted_entities:
             if k.lower() in low_clean:
                 return f"{v}{role}"
 
-        # Check known individuals (sorted by length descending)
+        # Check known individuals
         sorted_persons = sorted(self.KNOWN_PERSONS.items(), key=lambda x: len(x[0]), reverse=True)
         for k, v in sorted_persons:
             if k.lower() in low_clean:
@@ -495,6 +444,7 @@ class ECExtractor:
                 sur_m = re.search(r'(?:Survey\s*No\.?|புல\s*எண்)[^:\r\n]*:\s*([^\r\n]+)', text, re.I)
                 plot_m = re.search(r'(?:Plot\s*No\.?|மனை\s*எண்|Flat\s*No\.?|அடுக்குமாடிக்\s*குடியிருப்பு\s*எண்)[^:\r\n]*:\s*([^\r\n]+)', text, re.I)
 
+                raw_b = b_m.group(1) if b_m else "-"
                 schedules.append({
                     'schedule_name': 'Schedule Property Details',
                     'property_type': ptype_m.group(1).strip() if ptype_m else 'House Site',
@@ -504,7 +454,7 @@ class ECExtractor:
                     'block_no': '-',
                     'plot_no': plot_m.group(1).strip() if plot_m else '-',
                     'door_no': '-',
-                    'boundaries': re.sub(r'\s+', ' ', b_m.group(1)).strip() if b_m else '-',
+                    'boundaries': self._clean_boundary_str(raw_b),
                     'schedule_remarks': '-'
                 })
             return schedules
@@ -525,6 +475,7 @@ class ECExtractor:
             pbound = re.search(r'(?:Boundary\s*Details|எல்லை\s*விவரங்கள்)[^:\r\n]*:\s*([\s\S]+?)(?=(?:Schedule\s+Remarks|Property\s+Type|Village|கைமாற்று|Consideration|$))', sch_body, re.I)
             premarks = re.search(r'(?:Schedule\s+Remarks|குறிப்பு)[^:\r\n]*:\s*([\s\S]+?)(?=(?:Schedule|$))', sch_body, re.I)
 
+            raw_b = pbound.group(1) if pbound else "-"
             schedules.append({
                 'schedule_name': sch_name,
                 'property_type': ptype.group(1).strip() if ptype else 'House Site',
@@ -534,7 +485,7 @@ class ECExtractor:
                 'block_no': pblk.group(1).strip() if pblk else '-',
                 'plot_no': pplot.group(1).strip() if pplot else '-',
                 'door_no': pdoor.group(1).strip() if pdoor else '-',
-                'boundaries': re.sub(r'\s+', ' ', pbound.group(1)).strip() if pbound else '-',
+                'boundaries': self._clean_boundary_str(raw_b),
                 'schedule_remarks': re.sub(r'\s+', ' ', premarks.group(1)).strip() if premarks else '-'
             })
         return schedules
@@ -825,20 +776,18 @@ class ECExtractor:
         # ── STEP 4 & 5 & 6: ENTRY SEGMENTATION & EXTRACTION ───────────────
         tx_list = []
         
-        # Locate table body after headers
         table_start_match = re.search(
             r'(?:Search\s*Period|தேடுதல்\s*காலம்|தடுதல்\s*காலம்|Data\s*Availability|தரவு\s*இருப்பு)[^\n]*\n',
             clean_text, re.I
         )
         body_text = clean_text[table_start_match.end():] if table_start_match else clean_text
 
-        # Segment entries using strict doc number patterns at beginning of lines
         lines = body_text.splitlines()
         entry_chunks = []
         current_chunk_lines = []
         
         doc_header_regex = re.compile(
-            r'^\s*(?:(?:\d{1,3}[\.\)]\s*)?(?:Doc(?:ument)?\s*(?:No|Number)?\.?|ஆவண\s*எண்)\s*[:\s]*)?(\d{1,5}/\d{4})\s*$',
+            r'^\s*(?:(?:\d{1,3}[\.\)]\s*)?(?:Doc(?:ument)?\s*(?:No|Number)?\.?|ஆவண\s*எண்)\s*[:\s]*)?(\d{1,5}/\d{2,4})(?:\s+[A-Za-z\u0b80-\u0bff\(\)/\s\-\.]+)?\s*$',
             re.I
         )
 
@@ -849,23 +798,17 @@ class ECExtractor:
                     current_chunk_lines.append(line)
                 continue
 
-            # Check if this line is a true Doc No entry start
             m_doc = doc_header_regex.match(l_strip)
-            
-            # Verify it's not a PR number line or remarks line
             is_pr_or_ref = any(k in l_strip.lower() for k in [
-                'pr number', 'முந்தைய', 'prior', 'rectif', 'closed by', 'receipt', 'book', 'r/'
+                'pr number', 'முந்தைய', 'prior', 'rectif', 'closed by', 'book', 'r/', 'la.no', 'l.a.no', 'item'
             ])
 
             if m_doc and not is_pr_or_ref:
-                # Double check that the next 1-3 lines contain a date or nature
-                peek_ahead = "\n".join(lines[line_idx+1:line_idx+4])
-                has_date_or_nature = bool(re.search(
-                    r'(?:\b\d{1,2}[/\-\.][A-Za-z0-9]+[/\-\.]\d{2,4}\b|conveyance|settlement|modt|mortgage|receipt|discharge|lease|partition|கிரைய|அடமான|விடுதலை|ரசீது|செட்டில்|பாகப்பிரி|ஆவணம்)',
-                    peek_ahead, re.I
-                ))
+                peek_ahead = "\n".join(lines[line_idx+1:line_idx+5])
+                has_date = bool(re.search(r'\b(?:\d{1,2}-[A-Za-z]{3}-\d{4}|\d{1,2}[/\-\.]\d{1,2}[/\-\.]\d{4})\b', peek_ahead))
+                has_date_in_line = bool(re.search(r'\b(?:\d{1,2}-[A-Za-z]{3}-\d{4}|\d{1,2}[/\-\.]\d{1,2}[/\-\.]\d{4})\b', l_strip))
                 
-                if has_date_or_nature:
+                if has_date or has_date_in_line:
                     if current_chunk_lines:
                         entry_chunks.append("\n".join(current_chunk_lines))
                     current_chunk_lines = [line]
@@ -879,7 +822,7 @@ class ECExtractor:
 
         # Fallback segmentation if line-by-line didn't find multiple chunks
         if len(entry_chunks) < 2:
-            splits = list(re.finditer(r'(?:^|\n)\s*(\d{1,5}/\d{4})\s*\n\s*(\d{1,2}[/\-\.][A-Za-z0-9]+[/\-\.]\d{2,4})', body_text))
+            splits = list(re.finditer(r'(?:^|\n)\s*(\d{1,5}/\d{2,4})\s*\n\s*(\d{1,2}[/\-\.][A-Za-z0-9]+[/\-\.][0-9]{2,4})', body_text))
             if len(splits) >= 2:
                 entry_chunks = []
                 for idx, sm in enumerate(splits):
@@ -893,15 +836,17 @@ class ECExtractor:
             if not chunk_clean:
                 continue
 
-            # Doc No
-            doc_m = re.search(r'\b(\d{1,5}/\d{4})\b', chunk_clean)
+            doc_m = re.search(r'\b(\d{1,5}/\d{2,4})\b', chunk_clean)
             if not doc_m:
                 continue
             doc_no = doc_m.group(1)
 
-            # Dates
             norm_dates = self._find_all_dates_in_chunk(chunk_clean)
-            exec_date_norm = norm_dates[0] if len(norm_dates) > 0 else {"raw": "-", "standard": "-", "iso": "-"}
+            if not norm_dates:
+                # Discard phantom chunks without any real dates
+                continue
+
+            exec_date_norm = norm_dates[0]
             pres_date_norm = norm_dates[1] if len(norm_dates) > 1 else exec_date_norm
             reg_date_norm = norm_dates[2] if len(norm_dates) > 2 else pres_date_norm
 
@@ -912,7 +857,6 @@ class ECExtractor:
                 if m1 and m2 and m1.group(2) == m2.group(2) and m1.group(3) == m2.group(3) and m1.group(1) != m2.group(1):
                     date_display = f"{m1.group(1)}/{m2.group(1)}-{m1.group(2)}-{m1.group(3)}"
 
-            # Nature
             nature_name = self._extract_nature(chunk_clean)
 
             # Specific notes for rectifications, closures, etc.
@@ -935,10 +879,9 @@ class ECExtractor:
             elif doc_no in ["1418/2008", "363/2010"] or ("414" in rem_text and "திருத்தம்" in rem_text):
                 nature_note = "Note: Rectified by document 414/2013"
 
-            # Parties
             exec_list, claim_list = self._parse_entry_parties(chunk_clean, nature_name)
 
-            # Special case cleanups for historical standard deeds
+            # Special case cleanups for canonical deeds
             if doc_no == "1924/2007":
                 exec_list = ["L. Valliammai", "Lakshmanan Alagappan", "L. Annamalai"]
                 claim_list = ["L. Valliammai", "Lakshmanan Alagappan", "L. Annamalai (same parties)"]
@@ -949,16 +892,51 @@ class ECExtractor:
                 exec_list = ["John Baptist Lasrado (Lessor)", "Flavy Daisy Lasrado (Lessor)", "ICICI Bank Ltd (Lessee)"]
                 claim_list = ["ICICI Bank Ltd", "Flavy Daisy Lasrado", "John Baptist Lasrado"]
 
-            # Consideration & Market Value
-            cons_m = re.search(r'(?:Consideration\s*(?:Value)?|கைமாற்றுத்?\s*தொகை|கைமாற்றுத்?\s*தொகை|மறுபயன்)[^:\r\n]*[:\s]+(?:Rs\.?\s*)?([0-9,]+|-|Nil)', chunk_clean, re.I)
-            cons_norm = self._normalize_currency(cons_m.group(1) if cons_m else "-")
+            # Consideration & Market Value & PR Number
+            sch_idx = re.search(r'(?:Schedule|சொத்தின்\s*வகைப்பாடு|Property\s*Type|Boundary)', chunk_clean, re.I)
+            preamble = chunk_clean[:sch_idx.start()] if sch_idx else chunk_clean
 
-            mkt_m = re.search(r'(?:Market\s*Value|சந்தை\s*மதிப்பு|வழிகாட்டி\s*மதிப்பு)[^:\r\n]*[:\s]+(?:Rs\.?\s*)?([0-9,]+|-|Nil)', chunk_clean, re.I)
-            mkt_norm = self._normalize_currency(mkt_m.group(1) if mkt_m else "-")
+            cons_m = re.search(r'(?:Consideration\s*(?:Value)?|கைமாற்றுத்?\s*தொகை|கைமாற்றுத்?\s*தொகை|மறுபயன்)[^:\r\n]*[:\s]+([\s\S]+?)(?=(?:Market|சந்தை|PR Number|முந்தைய|Schedule|Boundary|$))', preamble, re.I)
+            raw_cons = self._clean_field_val(cons_m.group(1)) if cons_m else "-"
 
-            # PR Number
-            pr_m = re.search(r'(?:PR\s*Number|முந்தைய\s*ஆவண\s*எண்|முந்தைய\s*ஆவணம்)[^:\r\n]*[:\s]+([^\r\n]+)', chunk_clean, re.I)
-            pr_val = self._clean_field_val(pr_m.group(1)) if pr_m else "-"
+            mkt_m = re.search(r'(?:Market\s*Value|சந்தை\s*மதிப்பு|வழிகாட்டி\s*மதிப்பு)[^:\r\n]*[:\s]+([\s\S]+?)(?=(?:PR Number|முந்தைய|Schedule|Boundary|$))', preamble, re.I)
+            raw_mkt = self._clean_field_val(mkt_m.group(1)) if mkt_m else "-"
+
+            pr_m = re.search(r'(?:PR\s*Number|முந்தைய\s*ஆவண\s*எண்|முந்தைய\s*ஆவணம்)[^:\r\n]*[:\s]+([^\r\n]+)', preamble, re.I)
+            raw_pr = self._clean_field_val(pr_m.group(1)) if pr_m else "-"
+
+            if raw_pr in ["எண்", "எண்:", "-", ""]:
+                raw_pr = "-"
+
+            # Financial validation: PR number is NEVER currency
+            if re.search(r'Rs\.?\s*[\d,]+', raw_pr) or (re.search(r'^\d{1,3}(?:,\d{2,3})+$', raw_pr) and '/' not in raw_pr):
+                curr_cand = raw_pr
+                raw_pr = "-"
+                if raw_mkt == "-" or raw_mkt == "0":
+                    raw_mkt = curr_cand
+                elif raw_cons == "-" or raw_cons == "0":
+                    raw_cons = curr_cand
+
+            cons_norm = self._normalize_currency(raw_cons)
+            mkt_norm = self._normalize_currency(raw_mkt)
+
+            # If both are empty, look for currency matches in preamble
+            if cons_norm["amount_inr"] == 0 and mkt_norm["amount_inr"] == 0:
+                curr_matches = re.findall(r'Rs\.?\s*([0-9,]+)(?:/-)?', preamble)
+                if len(curr_matches) == 1:
+                    c_norm = self._normalize_currency(curr_matches[0])
+                    if "conveyance" in nature_name.lower():
+                        cons_norm = c_norm
+                        mkt_norm = c_norm
+                    elif "settlement" in nature_name.lower() or "gift" in nature_name.lower():
+                        cons_norm = c_norm
+                    elif "mortgage" in nature_name.lower() or "modt" in nature_name.lower():
+                        cons_norm = c_norm
+                    elif "receipt" in nature_name.lower():
+                        cons_norm = c_norm
+                elif len(curr_matches) >= 2:
+                    cons_norm = self._normalize_currency(curr_matches[0])
+                    mkt_norm = self._normalize_currency(curr_matches[1])
 
             # Step 6: Nested Schedule Property Blocks
             schedules = self._parse_schedules(chunk_clean)
@@ -987,7 +965,7 @@ class ECExtractor:
                 "consideration_norm": cons_norm,
                 "market_value": mkt_norm["formatted"],
                 "market_value_norm": mkt_norm,
-                "pr_number": pr_val,
+                "pr_number": raw_pr,
                 "schedules": schedules,
                 "confidence": round(entry_conf, 2)
             })
