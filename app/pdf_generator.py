@@ -2,7 +2,7 @@
 """
 PDF Report Generator for Real Estate Document OCR & Intelligence.
 Produces clean, professional, publication-ready PDF reports with Tamil font support.
-Specialized 4-Page EC Extractor Report matching the authoritative TNREGINET standard.
+Specialized EC Extracted Report matching the authoritative TNREGINET standard (10-column precision grid).
 """
 
 import io
@@ -11,7 +11,7 @@ import re
 import datetime
 from typing import Dict, Any, List
 
-from reportlab.lib.pagesizes import A4
+from reportlab.lib.pagesizes import A4, landscape
 from reportlab.platypus import (
     SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, KeepTogether, PageBreak, HRFlowable
 )
@@ -88,7 +88,7 @@ class _NumberedCanvas(canvas.Canvas):
 
 
 class _ECNumberedCanvas(canvas.Canvas):
-    """Clean canvas for publication-style EC Extracted Reports without repetitive headers."""
+    """Clean landscape canvas for publication-style EC Extracted Reports."""
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._saved_page_states = []
@@ -109,18 +109,21 @@ class _ECNumberedCanvas(canvas.Canvas):
         self.saveState()
         self.setFont("Helvetica", 7.5)
         self.setFillColor(colors.HexColor('#64748b'))
-        # Only print subtle page number on pages 2, 3, 4
         if self._pageNumber > 1:
-            self.drawRightString(559, 20, f"Page {self._pageNumber} of {page_count}")
+            self.drawRightString(805, 18, f"Page {self._pageNumber} of {page_count}")
         self.restoreState()
 
 
-def _sanitize_text_for_pdf(text: Any) -> str:
+def _sanitize_text_for_pdf(text: Any, default: str = "-") -> str:
     """Sanitize strings to ensure 100% clean ASCII / Latin-1 for Helvetica in ReportLab."""
     if text is None:
-        return ""
-    s = str(text)
-    # Replace unicode quotes, dashes, ellipsis, spaces, currency symbols
+        return default
+    s = str(text).strip()
+    if not s or s == "" or s.lower() in ["none", "null"]:
+        return default
+    if s == "-":
+        return "-"
+    
     replacements = {
         '“': '"', '”': '"', '’': "'", '‘': "'", '`': "'", '´': "'",
         '—': ' - ', '–': ' - ', '…': '...', '\u00a0': ' ',
@@ -130,161 +133,156 @@ def _sanitize_text_for_pdf(text: Any) -> str:
     for k, v in replacements.items():
         s = s.replace(k, v)
     
-    # If string contains bilingual pattern like "English (Tamil)", strip the Tamil parenthetical
+    # Strip parenthetical Tamil
     s = re.sub(r'\s*\([\u0b80-\u0bff\s\.\-—/,]+\)', '', s)
-    # Strip all Tamil Unicode characters (U+0B80 to U+0BFF)
+    # Strip Tamil unicode characters
     s = re.sub(r'[\u0b80-\u0bff]', '', s)
-    # Strip any character with ord(c) > 255 to guarantee 100% Latin-1 compliance
+    # Keep Latin-1 printable characters
     s = "".join(ch for ch in s if ord(ch) <= 255)
-    # Clean up empty parens like () or ( )
+    # Clean up empty parens
     s = re.sub(r'\(\s*\)', '', s)
-    # Clean up duplicate punctuation like (. ) or (. ;)
     s = re.sub(r'\(\s*[.,;:\-]+\s*\)', '', s)
-    # Clean up leading/trailing dashes or extra spaces
-    s = re.sub(r'\s*-\s*$', '', s)
-    s = re.sub(r'^\s*-\s*', '', s)
     s = re.sub(r'\s+', ' ', s).strip()
-    return s
+    return s if s else default
 
 
 def generate_ec_extracted_report_pdf(ec_data: dict) -> bytes:
     """
     Generate authoritative, publication-ready Encumbrance Certificate Extracted Report
-    matching the exact structure, typography, tables, and precision of TNREGINET standards.
+    in Landscape A4 with full 10-column precision table matching authoritative TNREGINET standards.
     """
     buffer = io.BytesIO()
     
-    # A4 margins 36pt (width 595.28 - 72 = 523.28pt printable)
+    # Landscape A4 margins 28pt (width 841.89pt - 56pt = 785.89pt printable)
     doc = SimpleDocTemplate(
         buffer,
-        pagesize=A4,
-        leftMargin=36,
-        rightMargin=36,
-        topMargin=36,
-        bottomMargin=36
+        pagesize=landscape(A4),
+        leftMargin=28,
+        rightMargin=28,
+        topMargin=28,
+        bottomMargin=28
     )
 
     styles = getSampleStyleSheet()
 
-    # Custom typography styles matching the target layout exactly
     title_style = ParagraphStyle(
         'ECTitle',
         fontName='Helvetica-Bold',
-        fontSize=15,
-        leading=19,
+        fontSize=14,
+        leading=18,
         textColor=colors.HexColor('#0f172a'),
-        spaceAfter=3
+        spaceAfter=2
     )
 
     subtitle_style = ParagraphStyle(
         'ECSubtitle',
         fontName='Helvetica',
-        fontSize=8.5,
+        fontSize=8,
         leading=11,
         textColor=colors.HexColor('#475569'),
-        spaceAfter=6
+        spaceAfter=5
     )
 
     sec_header_style = ParagraphStyle(
         'ECSecHeader',
         fontName='Helvetica-Bold',
-        fontSize=11,
-        leading=15,
+        fontSize=10,
+        leading=13,
         textColor=colors.HexColor('#0f172a'),
-        spaceBefore=8,
-        spaceAfter=6
+        spaceBefore=6,
+        spaceAfter=4
     )
 
     sec_sub_style = ParagraphStyle(
         'ECSecSub',
         fontName='Helvetica',
-        fontSize=8,
-        leading=11,
+        fontSize=7.5,
+        leading=10,
         textColor=colors.HexColor('#475569'),
-        spaceAfter=6
+        spaceAfter=5
     )
 
     meta_label = ParagraphStyle(
         'ECMetaLabel',
         fontName='Helvetica-Bold',
-        fontSize=8,
-        leading=10,
+        fontSize=7.5,
+        leading=9.5,
         textColor=colors.HexColor('#0f172a')
     )
 
     meta_val = ParagraphStyle(
         'ECMetaVal',
         fontName='Helvetica',
-        fontSize=8,
-        leading=10.5,
+        fontSize=7.5,
+        leading=9.5,
         textColor=colors.HexColor('#1e293b')
     )
 
     callout_style = ParagraphStyle(
         'ECCallout',
         fontName='Helvetica',
-        fontSize=8,
-        leading=11,
+        fontSize=7.5,
+        leading=10.5,
         textColor=colors.HexColor('#991b1b')
     )
 
     flag_body = ParagraphStyle(
         'ECFlagBody',
         fontName='Helvetica',
-        fontSize=8,
-        leading=11.5,
+        fontSize=7.5,
+        leading=10.5,
         textColor=colors.HexColor('#1e293b'),
-        spaceAfter=4
+        spaceAfter=3
     )
 
     th_style = ParagraphStyle(
         'ECTableH',
         fontName='Helvetica-Bold',
-        fontSize=7.2,
-        leading=9,
+        fontSize=6.8,
+        leading=8.5,
         textColor=colors.HexColor('#0f172a')
     )
 
     td_style = ParagraphStyle(
         'ECTableD',
         fontName='Helvetica',
-        fontSize=7.2,
-        leading=9.2,
+        fontSize=6.8,
+        leading=8.5,
         textColor=colors.HexColor('#0f172a')
     )
 
     td_bold = ParagraphStyle(
         'ECTableDBold',
         fontName='Helvetica-Bold',
-        fontSize=7.2,
-        leading=9.2,
+        fontSize=6.8,
+        leading=8.5,
         textColor=colors.HexColor('#0f172a')
     )
 
     td_note = ParagraphStyle(
         'ECTableDNote',
         fontName='Helvetica-Oblique',
-        fontSize=6.5,
-        leading=8.2,
+        fontSize=6.0,
+        leading=7.5,
         textColor=colors.HexColor('#475569')
     )
 
     caveat_p = ParagraphStyle(
         'ECCaveatP',
         fontName='Helvetica',
-        fontSize=8,
-        leading=11.5,
+        fontSize=7.5,
+        leading=11,
         textColor=colors.HexColor('#1e293b'),
-        spaceAfter=6
+        spaceAfter=5
     )
 
     footer_p = ParagraphStyle(
         'ECFooterP',
         fontName='Helvetica',
-        fontSize=7.5,
-        leading=10,
+        fontSize=7.0,
+        leading=9.5,
         textColor=colors.HexColor('#64748b'),
-        spaceBefore=14
+        spaceBefore=10
     )
 
     elements = []
@@ -292,13 +290,13 @@ def generate_ec_extracted_report_pdf(ec_data: dict) -> bytes:
     # ── PAGE 1: HEADER & SECTIONS 1 & 2 ──────────────────────────────────
     elements.append(Paragraph("Encumbrance Certificate — Extracted Report", title_style))
     elements.append(Paragraph("Government of Tamil Nadu, Registration Department (TNREGINET) — source document parsed field-by-field", subtitle_style))
-    elements.append(HRFlowable(width="100%", thickness=1, color=colors.HexColor('#0f172a'), spaceAfter=8, spaceBefore=0))
+    elements.append(HRFlowable(width="100%", thickness=1, color=colors.HexColor('#0f172a'), spaceAfter=6, spaceBefore=0))
 
     # Section 1: Property & Search Identification
     elements.append(Paragraph("1. Property & Search Identification", sec_header_style))
 
-    # 4-column Table: 523pt total width
-    col_w = [135, 126, 136, 126]
+    # 4-column Table across 785pt
+    col_w = [185, 207, 185, 208]
     prop_data = [
         [
             Paragraph("<b>Sub-Registrar Office (SRO)</b>", meta_label),
@@ -326,7 +324,7 @@ def generate_ec_extracted_report_pdf(ec_data: dict) -> bytes:
         ],
         [
             Paragraph("<b>Form Type</b>", meta_label),
-            Paragraph(_sanitize_text_for_pdf(ec_data.get("form_type", "Form 15 equivalent — TRANSACTIONS FOUND (35 registered entries)")), meta_val),
+            Paragraph(_sanitize_text_for_pdf(ec_data.get("form_type", "Form 15 equivalent — TRANSACTIONS FOUND")), meta_val),
             Paragraph("<b>Total Entries Found</b>", meta_label),
             Paragraph(_sanitize_text_for_pdf(str(ec_data.get("total_entries", "35"))), meta_val),
         ],
@@ -338,30 +336,30 @@ def generate_ec_extracted_report_pdf(ec_data: dict) -> bytes:
         ('BACKGROUND', (2, 0), (2, -1), colors.HexColor('#f8fafc')),
         ('BOX', (0, 0), (-1, -1), 0.5, colors.HexColor('#cbd5e1')),
         ('INNERGRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#cbd5e1')),
-        ('TOPPADDING', (0, 0), (-1, -1), 4),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
-        ('LEFTPADDING', (0, 0), (-1, -1), 6),
-        ('RIGHTPADDING', (0, 0), (-1, -1), 6),
+        ('TOPPADDING', (0, 0), (-1, -1), 3),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+        ('LEFTPADDING', (0, 0), (-1, -1), 5),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 5),
     ]))
     elements.append(prop_table)
-    elements.append(Spacer(1, 6))
+    elements.append(Spacer(1, 4))
 
     # Search window advisory note
     search_period_str = _sanitize_text_for_pdf(ec_data.get("search_period", "Aug-2004 to Nov-2011"))
     callout_data = [[
         Paragraph(f"<b>Search-window note:</b> Tamil Nadu title-verification practice generally recommends a minimum 30-year EC search window. This certificate's data-available range ({search_period_str}) is materially shorter than that standard, so ownership history before this window is not covered by this document and should be verified through a separate, earlier-period EC or parent title deeds.", callout_style)
     ]]
-    callout_table = Table(callout_data, colWidths=[523])
+    callout_table = Table(callout_data, colWidths=[785])
     callout_table.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#fff1f2')),
         ('BOX', (0, 0), (-1, -1), 0.5, colors.HexColor('#fecdd3')),
-        ('TOPPADDING', (0, 0), (-1, -1), 5),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
-        ('LEFTPADDING', (0, 0), (-1, -1), 8),
-        ('RIGHTPADDING', (0, 0), (-1, -1), 8),
+        ('TOPPADDING', (0, 0), (-1, -1), 4),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+        ('LEFTPADDING', (0, 0), (-1, -1), 6),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 6),
     ]))
     elements.append(callout_table)
-    elements.append(Spacer(1, 10))
+    elements.append(Spacer(1, 6))
 
     # Section 2: Key Verification Flags
     elements.append(Paragraph("2. Key Verification Flags", sec_header_style))
@@ -370,11 +368,11 @@ def generate_ec_extracted_report_pdf(ec_data: dict) -> bytes:
     mortgage_flags = ec_data.get("mortgages_flags", [])
     if not mortgage_flags:
         mortgage_flags = [
-            "[CLOSED] Doc 743/2007 (Agni Estates & Foundations Pvt Ltd → Indian Overseas Bank, Rs. 2.90 Cr) — CLOSED by Receipt 463/2009 (18-Mar-2009).",
-            "[OPEN / UNRELEASED] Doc 958/2009 (Chennai Agni Business & Mgmt Services Pvt Ltd → Bank of India, loan Rs. 950 lakhs) — NO closure/receipt entry found in this search window.",
-            "[OPEN / UNRELEASED] Doc 1473/2008 & 1474/2008 (N. Vimaladevi & 10 co-owners → Standard Chartered Bank, Rs. 2 Cr & Rs. 3 Cr) — NO closure/receipt entry found in this search window.",
-            "[OPEN / UNRELEASED] Doc 1364/2009 (V. Tharshan Raj, V. Sailesh Raj, V. Ashwin Raj → Indian Overseas Bank, Rs. 9 Cr) — NO closure/receipt entry found in this search window.",
-            "[OPEN / UNRELEASED] Doc 1427/2009 (P. Visweswara Reddy → State Bank of India, Rs. 30 lakhs) — NO closure/receipt entry found in this search window."
+            "[CLOSED] Doc 743/2007 (Agni Estates & Foundations Pvt Ltd -> Indian Overseas Bank, Rs. 2.90 Cr) — CLOSED by Receipt 463/2009 (18-Mar-2009).",
+            "[OPEN / UNRELEASED] Doc 958/2009 (Chennai Agni Business & Mgmt Services Pvt Ltd -> Bank of India, loan Rs. 950 lakhs) — NO closure/receipt entry found in this search window.",
+            "[OPEN / UNRELEASED] Doc 1473/2008 & 1474/2008 (N. Vimaladevi & 10 co-owners -> Standard Chartered Bank, Rs. 2 Cr & Rs. 3 Cr) — NO closure/receipt entry found in this search window.",
+            "[OPEN / UNRELEASED] Doc 1364/2009 (V. Tharshan Raj, V. Sailesh Raj, V. Ashwin Raj -> Indian Overseas Bank, Rs. 9 Cr) — NO closure/receipt entry found in this search window.",
+            "[OPEN / UNRELEASED] Doc 1427/2009 (P. Visweswara Reddy -> State Bank of India, Rs. 30 lakhs) — NO closure/receipt entry found in this search window."
         ]
 
     for mf in mortgage_flags:
@@ -387,24 +385,25 @@ def generate_ec_extracted_report_pdf(ec_data: dict) -> bytes:
             mf_html = san_mf
         elements.append(Paragraph(mf_html, flag_body))
 
-    elements.append(Spacer(1, 3))
+    elements.append(Spacer(1, 2))
     court_text = _sanitize_text_for_pdf(ec_data.get("court_attachments_text") or "No court attachments, decrees, or lis-pendens entries appear among the registered documents in this search window.")
     elements.append(Paragraph(court_text, flag_body))
-    elements.append(Spacer(1, 3))
+    elements.append(Spacer(1, 2))
     lease_text = _sanitize_text_for_pdf(ec_data.get("lease_text") or "One active lease (Doc 2309/2007, rectified by 330/2008) to ICICI Bank Ltd is recorded, term 11-Apr-2010 to 10-Apr-2013 per the rectification.")
     elements.append(Paragraph(lease_text, flag_body))
-    elements.append(Spacer(1, 3))
+    elements.append(Spacer(1, 2))
     rect_text = _sanitize_text_for_pdf(ec_data.get("rectification_text") or "Rectification deeds present: 220/2007 (rectifies 205/2007), 330/2008 (rectifies 2309/2007), 414/2013 (rectifies both 1418/2008 and 363/2010, per document remarks), and 1022/2021 (rectifies 1828/2006, per document remarks). These indicate corrections to earlier registered instruments rather than new encumbrances.")
     elements.append(Paragraph(rect_text, flag_body))
 
-    # ── PAGES 2 & 3: REGISTERED ENTRIES TABLE ─────────────────────────────
+    # ── PAGES 2 & 3: REGISTERED ENTRIES TABLE (10 COLUMNS) ─────────────────
     elements.append(PageBreak())
 
-    elements.append(Paragraph("3. Registered Entries (Form 15) — Full Detail", sec_header_style))
+    elements.append(Paragraph("3. Registered Entries (Form 15) — Full Detail Table", sec_header_style))
     elements.append(Paragraph(f"All {ec_data.get('total_entries', 35)} entries returned for the search period {_sanitize_text_for_pdf(ec_data.get('search_period', '29-Aug-2004 to 28-Nov-2011'))}, SRO {_sanitize_text_for_pdf(ec_data.get('sro', 'Adayar'))}, Village {_sanitize_text_for_pdf(ec_data.get('village', 'Adyar'))}, Survey {_sanitize_text_for_pdf(ec_data.get('survey_searched', '5'))}.", sec_sub_style))
 
-    # Columns: [24, 52, 62, 92, 130, 105, 58] = 523pt printable
-    t_widths = [24, 52, 62, 92, 130, 105, 58]
+    # 10 Columns total width: 786pt
+    # [Sr(22), Doc(54), Date(58), Nature(85), Execs(125), Claims(115), Cons(72), Mkt(72), PR(53), Schedule(130)]
+    t_widths = [22, 54, 58, 85, 125, 115, 72, 72, 53, 130]
     
     t_rows = [[
         Paragraph("<b>Sr.</b>", th_style),
@@ -414,32 +413,87 @@ def generate_ec_extracted_report_pdf(ec_data: dict) -> bytes:
         Paragraph("<b>Executant(s)</b>", th_style),
         Paragraph("<b>Claimant(s)</b>", th_style),
         Paragraph("<b>Consideration Value</b>", th_style),
+        Paragraph("<b>Market Value</b>", th_style),
+        Paragraph("<b>PR Number</b>", th_style),
+        Paragraph("<b>Schedule Details</b>", th_style),
     ]]
 
     entries = ec_data.get("transactions", [])
     if entries:
         for idx, row in enumerate(entries):
+            # 1. Sr
             sr_num = row.get("sr") or (idx + 1)
-            nature_val = _sanitize_text_for_pdf(row.get("nature", "Conveyance")).replace("\n", "<br/>")
-            nature_cell = [Paragraph(nature_val, td_style)]
             
-            note_str = _sanitize_text_for_pdf(row.get("nature_note", ""))
-            if note_str and note_str.strip():
+            # 2. Doc No
+            doc_no_val = _sanitize_text_for_pdf(row.get("doc_no") or "-")
+            
+            # 3. Date
+            date_val = _sanitize_text_for_pdf(row.get("date") or "-").replace("\n", "<br/>")
+            
+            # 4. Nature & Note
+            nature_val = _sanitize_text_for_pdf(row.get("nature") or "Conveyance").replace("\n", "<br/>")
+            nature_cell = [Paragraph(nature_val, td_style)]
+            note_str = _sanitize_text_for_pdf(row.get("nature_note") or "")
+            if note_str and note_str != "-":
                 nature_cell.append(Spacer(1, 1.5))
                 nature_cell.append(Paragraph(f"<i>{note_str}</i>", td_note))
 
+            # 5. Executants
             execs_val = _sanitize_text_for_pdf(row.get("executants") or row.get("parties") or "-").replace("\n", "<br/>")
+            
+            # 6. Claimants
             claims_val = _sanitize_text_for_pdf(row.get("claimants") or "-").replace("\n", "<br/>")
-            cons_val = _sanitize_text_for_pdf(str(row.get("consideration") or "-")).replace("\n", "<br/>")
+            
+            # 7. Consideration Value (Architecture: 1-by-1 explicit mapping)
+            raw_cons = row.get("consideration")
+            if not raw_cons or str(raw_cons).strip() in ["-", "0", "None", "null", ""]:
+                cons_norm = row.get("consideration_norm")
+                if isinstance(cons_norm, dict) and cons_norm.get("amount_inr", 0) > 0:
+                    raw_cons = cons_norm.get("formatted", "-")
+                else:
+                    raw_cons = "-"
+            cons_val = _sanitize_text_for_pdf(raw_cons)
+
+            # 8. Market Value (Architecture: 1-by-1 explicit mapping)
+            raw_mkt = row.get("market_value")
+            if not raw_mkt or str(raw_mkt).strip() in ["-", "0", "None", "null", ""]:
+                mkt_norm = row.get("market_value_norm")
+                if isinstance(mkt_norm, dict) and mkt_norm.get("amount_inr", 0) > 0:
+                    raw_mkt = mkt_norm.get("formatted", "-")
+                else:
+                    raw_mkt = "-"
+            mkt_val = _sanitize_text_for_pdf(raw_mkt)
+
+            # 9. PR Number (Architecture: 1-by-1 explicit mapping with currency guard)
+            raw_pr = str(row.get("pr_number") or "-").strip()
+            if bool(re.search(r'Rs\.?|₹|\bINR\b', raw_pr, re.I)) or (bool(re.search(r'^\s*[\d,]+\s*$', raw_pr)) and '/' not in raw_pr):
+                raw_pr = "-"
+            pr_val = _sanitize_text_for_pdf(raw_pr)
+
+            # 10. Schedule Details (Architecture: 1-by-1 explicit mapping)
+            sch_list = row.get("schedules", [])
+            sch_summary = "-"
+            if sch_list and isinstance(sch_list, list) and len(sch_list) > 0:
+                s0 = sch_list[0]
+                parts = []
+                if s0.get("extent") and s0.get("extent") != "-": parts.append(s0["extent"])
+                if s0.get("survey_no") and s0.get("survey_no") != "-": parts.append(f"Sy:{s0['survey_no']}")
+                if s0.get("plot_no") and s0.get("plot_no") != "-": parts.append(f"Plot:{s0['plot_no']}")
+                if s0.get("door_no") and s0.get("door_no") != "-": parts.append(f"Door:{s0['door_no']}")
+                sch_summary = ", ".join(parts) or s0.get("property_type", "-")
+            sch_val = _sanitize_text_for_pdf(sch_summary)
 
             t_rows.append([
                 Paragraph(str(sr_num), td_style),
-                Paragraph(_sanitize_text_for_pdf(str(row.get("doc_no", "-"))), td_bold),
-                Paragraph(_sanitize_text_for_pdf(str(row.get("date", "-"))).replace("\n", "<br/>"), td_style),
+                Paragraph(doc_no_val, td_bold),
+                Paragraph(date_val, td_style),
                 nature_cell,
                 Paragraph(execs_val, td_style),
                 Paragraph(claims_val, td_style),
                 Paragraph(cons_val, td_style),
+                Paragraph(mkt_val, td_style),
+                Paragraph(pr_val, td_style),
+                Paragraph(sch_val, td_style),
             ])
 
         entries_table = Table(t_rows, colWidths=t_widths, repeatRows=1)
@@ -447,10 +501,10 @@ def generate_ec_extracted_report_pdf(ec_data: dict) -> bytes:
             ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#eef2f6')),
             ('ALIGN', (0, 0), (-1, 0), 'LEFT'),
             ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-            ('TOPPADDING', (0, 0), (-1, -1), 3.5),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 3.5),
-            ('LEFTPADDING', (0, 0), (-1, -1), 3.5),
-            ('RIGHTPADDING', (0, 0), (-1, -1), 3.5),
+            ('TOPPADDING', (0, 0), (-1, -1), 3),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+            ('LEFTPADDING', (0, 0), (-1, -1), 3),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 3),
             ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#cbd5e1')),
             ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f8fafc')]),
         ]))
@@ -478,7 +532,7 @@ def generate_ec_extracted_report_pdf(ec_data: dict) -> bytes:
     for c in caveats:
         elements.append(Paragraph(c, caveat_p))
 
-    elements.append(Spacer(1, 14))
+    elements.append(Spacer(1, 10))
     elements.append(Paragraph(
         f"Source: Government of Tamil Nadu Registration Department, Certificate of Encumbrance on Property, SRO {sro_name}, issued {_sanitize_text_for_pdf(ec_data.get('issue_date', '29-Aug-2026'))}.<br/>"
         "Extracted and structured for review purposes; refer to the original certificate for the authoritative record and digital signature validity.",
@@ -490,7 +544,7 @@ def generate_ec_extracted_report_pdf(ec_data: dict) -> bytes:
 
 
 def _prepare_ec_report_data(data: dict, fields: dict, ext: dict) -> dict:
-    """Helper to extract and format EC fields for the 4-page report generator."""
+    """Helper to extract and format EC fields for the report generator."""
     def _val(k, default=""):
         f = fields.get(k)
         if isinstance(f, dict):
@@ -547,7 +601,7 @@ def _prepare_ec_report_data(data: dict, fields: dict, ext: dict) -> dict:
 def generate_ocr_pdf_report(data: Dict[str, Any]) -> bytes:
     """
     Generate a full-fidelity PDF report of the OCR extraction results.
-    If the document is an Encumbrance Certificate (EC), routes to the specialized 4-page report.
+    If the document is an Encumbrance Certificate (EC), routes to the specialized 10-column landscape report.
     Returns bytes of the compiled PDF.
     """
     ext = data.get("extraction", {})
@@ -600,9 +654,9 @@ def generate_ocr_pdf_report(data: Dict[str, Any]) -> bytes:
         'MetaLabel',
         parent=styles['Normal'],
         fontName=font_bold,
-        fontSize=8.5,
-        leading=11,
-        textColor=colors.HexColor('#64748b')
+        fontSize=9,
+        leading=12,
+        textColor=colors.HexColor('#334155')
     )
 
     meta_val_style = ParagraphStyle(
@@ -614,168 +668,92 @@ def generate_ocr_pdf_report(data: Dict[str, Any]) -> bytes:
         textColor=colors.HexColor('#0f172a')
     )
 
-    field_label_style = ParagraphStyle(
-        'FieldLabel',
-        parent=styles['Normal'],
-        fontName=font_bold,
-        fontSize=9,
-        leading=12,
-        textColor=colors.HexColor('#1e293b')
-    )
-
-    field_val_style = ParagraphStyle(
-        'FieldVal',
-        parent=styles['Normal'],
-        fontName=font_name,
-        fontSize=9,
-        leading=13,
-        textColor=colors.HexColor('#0f172a')
-    )
-
-    field_conf_style = ParagraphStyle(
-        'FieldConf',
-        parent=styles['Normal'],
-        fontName=font_bold,
-        fontSize=8.5,
-        leading=11,
-        alignment=1,
-        textColor=colors.HexColor('#059669')
-    )
-
     doc = SimpleDocTemplate(
         buffer,
         pagesize=A4,
-        rightMargin=36,
         leftMargin=36,
-        topMargin=50,
-        bottomMargin=50
+        rightMargin=36,
+        topMargin=54,
+        bottomMargin=54
     )
 
     elements = []
 
-    # 1. Document Title
-    checklist = ext.get("checklist", [])
-    doc_type_name = ext.get("document_type_name", "Real Estate Document")
-    tamil_name = ext.get("tamil_name", "")
-    filename = data.get("filename", "Uploaded_Document.pdf")
-    total_pages = data.get("total_pages", 1)
+    # Title & Metadata
+    title_text = data.get("filename", "Document Extraction Report")
+    elements.append(Paragraph(title_text, title_style))
+    elements.append(Paragraph(f"Category: <b>{doc_type.upper()}</b> • Processed: {datetime.datetime.now().strftime('%d-%b-%Y %I:%M %p')}", subtitle_style))
+    elements.append(HRFlowable(width="100%", thickness=1, color=colors.HexColor('#e2e8f0'), spaceAfter=10))
 
-    elements.append(Paragraph("REAL ESTATE DOCUMENT OCR & INTELLIGENCE REPORT", title_style))
-    sub = f"<b>Document Category:</b> {doc_type_name}"
-    if tamil_name:
-        sub += f" • {tamil_name}"
-    elements.append(Paragraph(sub, subtitle_style))
-
-    # 2. Metadata Box
-    now_str = datetime.datetime.now().strftime("%d %B %Y, %I:%M %p")
-    meta_data = [
-        [
-            Paragraph("<b>DOCUMENT FILE</b>", meta_label_style),
-            Paragraph(filename, meta_val_style),
-            Paragraph("<b>TOTAL PAGES</b>", meta_label_style),
-            Paragraph(str(total_pages), meta_val_style),
-        ],
-        [
-            Paragraph("<b>PROCESSED DATE</b>", meta_label_style),
-            Paragraph(now_str, meta_val_style),
-            Paragraph("<b>STATUS</b>", meta_label_style),
-            Paragraph("<font color='#059669'><b>High Confidence (98%)</b></font>", meta_val_style),
-        ]
-    ]
-    meta_table = Table(meta_data, colWidths=[100, 180, 95, 148])
-    meta_table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#f8fafc')),
-        ('BOX', (0, 0), (-1, -1), 0.5, colors.HexColor('#cbd5e1')),
-        ('INNERGRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#e2e8f0')),
-        ('TOPPADDING', (0, 0), (-1, -1), 5),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
-        ('LEFTPADDING', (0, 0), (-1, -1), 8),
-        ('RIGHTPADDING', (0, 0), (-1, -1), 8),
-    ]))
-    elements.append(meta_table)
-    elements.append(Spacer(1, 14))
-
-    # 3. Key Extracted Fields
-    elements.append(Paragraph("1. Extracted Key Legal Fields", section_header_style))
-
-    field_rows = [
-        [
-            Paragraph("<b>Key Field</b>", meta_label_style),
-            Paragraph("<b>Extracted Value & Schedule Breakdown</b>", meta_label_style),
-            Paragraph("<b>Confidence</b>", meta_label_style)
-        ]
-    ]
+    # Extracted Key Fields Table
+    elements.append(Paragraph("1. Extracted Key Entities & Values", section_header_style))
+    
+    rows = [[
+        Paragraph("<b>Field Name</b>", meta_label_style),
+        Paragraph("<b>Extracted Value</b>", meta_label_style),
+        Paragraph("<b>Confidence</b>", meta_label_style)
+    ]]
 
     for k, v in fields.items():
-        if k in ["transactions_table", "verification_flags", "checklist"]:
+        if k in ["transactions_table", "checklist", "verification_flags", "confidence_summary"]:
             continue
-        lbl = _sanitize_text_for_pdf(v.get("label", k.replace("_", " ").title()))
-        raw_val = _sanitize_text_for_pdf(str(v.get("value", "Not Detected")).strip())
-        formatted_val = raw_val.replace("\n", "<br/>")
-        conf = int(v.get("confidence", 0.95) * 100)
         
-        field_rows.append([
-            Paragraph(f"<b>{lbl}</b>", field_label_style),
-            Paragraph(formatted_val, field_val_style),
-            Paragraph(f"{conf}%", field_conf_style)
+        label_str = k.replace("_", " ").title()
+        val_str = ""
+        conf_str = "0.95"
+        
+        if isinstance(v, dict):
+            val_str = str(v.get("value") or v.get("raw_value") or "-")
+            conf_str = f"{v.get('confidence', 0.95):.2f}"
+        else:
+            val_str = str(v)
+            
+        rows.append([
+            Paragraph(_sanitize_text_for_pdf(label_str), meta_label_style),
+            Paragraph(_sanitize_text_for_pdf(val_str), meta_val_style),
+            Paragraph(conf_str, meta_val_style)
         ])
 
-    fields_table = Table(field_rows, colWidths=[130, 335, 58])
-    fields_table.setStyle(TableStyle([
+    table = Table(rows, colWidths=[160, 310, 53])
+    table.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f1f5f9')),
-        ('ALIGN', (2, 0), (2, -1), 'CENTER'),
+        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
         ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        ('TOPPADDING', (0, 0), (-1, -1), 4),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
         ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#cbd5e1')),
-        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#fcfdfe')]),
-        ('TOPPADDING', (0, 0), (-1, -1), 5),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
-        ('LEFTPADDING', (0, 0), (-1, -1), 6),
-        ('RIGHTPADDING', (0, 0), (-1, -1), 6),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f8fafc')])
     ]))
-    elements.append(fields_table)
+    elements.append(table)
     elements.append(Spacer(1, 14))
 
-    # 4. Legal Verification Checklist
+    # Checklist Section
+    checklist = ext.get("checklist") or []
     if checklist:
-        elements.append(KeepTogether([
-            Paragraph("2. Document Verification Checklist", section_header_style),
-            Spacer(1, 4)
-        ]))
-        chk_rows = [
-            [
-                Paragraph("<b>Verification Item</b>", meta_label_style),
-                Paragraph("<b>Status</b>", meta_label_style),
-                Paragraph("<b>Details / Assessment</b>", meta_label_style)
-            ]
-        ]
+        elements.append(Paragraph("2. Legal Compliance & Risk Checklist", section_header_style))
+        chk_rows = [[
+            Paragraph("<b>Rule / Requirement</b>", meta_label_style),
+            Paragraph("<b>Status</b>", meta_label_style),
+            Paragraph("<b>Remarks</b>", meta_label_style)
+        ]]
         for item in checklist:
-            title = _sanitize_text_for_pdf(item.get("title", item.get("item", "Check")))
-            status = _sanitize_text_for_pdf(str(item.get("status", "unknown")).upper())
-            detail = _sanitize_text_for_pdf(item.get("detail", item.get("details", "-")))
-            
-            if status in ["PASS", "PASSED"]:
-                status_html = "<font color='#059669'><b>PASSED</b></font>"
-            elif status in ["FLAGGED", "FAIL"]:
-                status_html = "<font color='#dc2626'><b>FLAGGED</b></font>"
-            else:
-                status_html = f"<font color='#64748b'><b>{status}</b></font>"
-                
+            status_color = "#16a34a" if item.get("status") == "PASS" else ("#dc2626" if item.get("status") == "FAIL" else "#ea580c")
+            status_html = f"<font color='{status_color}'><b>{item.get('status', 'REVIEW')}</b></font>"
             chk_rows.append([
-                Paragraph(f"<b>{title}</b>", field_label_style),
-                Paragraph(status_html, field_val_style),
-                Paragraph(detail, field_val_style)
+                Paragraph(_sanitize_text_for_pdf(item.get("rule_name", "")), meta_label_style),
+                Paragraph(status_html, meta_val_style),
+                Paragraph(_sanitize_text_for_pdf(item.get("remarks", "")), meta_val_style)
             ])
-
-        chk_table = Table(chk_rows, colWidths=[150, 70, 303])
+        
+        chk_table = Table(chk_rows, colWidths=[180, 70, 273])
         chk_table.setStyle(TableStyle([
             ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f1f5f9')),
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
             ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+            ('TOPPADDING', (0, 0), (-1, -1), 4),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
             ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#cbd5e1')),
-            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#fcfdfe')]),
-            ('TOPPADDING', (0, 0), (-1, -1), 5),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
-            ('LEFTPADDING', (0, 0), (-1, -1), 6),
-            ('RIGHTPADDING', (0, 0), (-1, -1), 6),
+            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f8fafc')])
         ]))
         elements.append(chk_table)
 

@@ -358,10 +358,15 @@ class ECExtractor:
             r'வாங்குபவர்[கள்]*', r'அடமானம்\s*வைத்தவர்', r'அடமானம்\s*பெற்றவர்',
             r'விடுதலை\s*செய்தவர்', r'பெறுபவர்', r'குத்தகைதாரர்', r'executant[s]*', r'claimant[s]*',
             r'vendor[s]*', r'purchaser[s]*', r'mortgagor[s]*', r'mortgagee[s]*',
-            r'lessor[s]*', r'lessee[s]*', r'consideration', r'market\s*value', r'schedule'
+            r'lessor[s]*', r'lessee[s]*', r'consideration', r'market\s*value', r'schedule',
+            r'அரசாணை', r'arasaanai', r'முத்திரைத்தீர்வை', r'முத்திரைத்தீர்', r'muththiraitheervai',
+            r'ரூபாய்', r'roopaay', r'பதிவு', r'குறிப்புகள்', r'குறிப்புரை', r'aavanak\s*kurippukal',
+            r'ஆவணக்\s*குறிப்புகள்', r'சொத்து\s*விவரம்', r'பிரிபடாத\s*பாகம்', r'piripataatha\s*paakam',
+            r'கார்ப்பரேஷன்', r'கதவு\s*எண்', r'பிளாக்\s*எண்', r'ப்ளாட்', r'அடுக்குமாடிக்\s*குடியிருப்பு',
+            r'soththin\s*vistheernam', r'boundary\s*details', r'property\s*type', r'extent', r'square\s*feet'
         ]
         for mp in metadata_patterns:
-            if re.match(r'^\s*' + mp + r'\s*[:\s]*$', low, re.I) or re.search(r'^\s*' + mp + r'\s*:', low, re.I):
+            if re.search(mp, low, re.I):
                 return ""
 
         # Extract role tags before checking names
