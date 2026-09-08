@@ -541,7 +541,28 @@ def format_bilingual_entity(text: str) -> str:
             ta_val = " ".join(ta_words)
         return f"{clean} ({ta_val})" if ta_val else clean
 
-    return clean
+def format_bilingual_field_dict(raw_val: str) -> dict:
+    """
+    Formats any field value into structured { "english": "...", "tamil": "..." }
+    for frontend key-value card rendering.
+    """
+    raw_s = str(raw_val).strip() if raw_val is not None else ""
+    if not raw_s or raw_s in ("Not Detected", "None", "-"):
+        return {"english": raw_s or "Not Detected", "tamil": raw_s or "கண்டறியப்படவில்லை"}
+
+    formatted = format_bilingual_entity(raw_s)
+    if not formatted or not isinstance(formatted, str):
+        formatted = raw_s
+
+    m = re.match(r'^(.*?)\s*\(([\u0b80-\u0bff\s,\./\-0-9]+)\)$', formatted)
+    if m:
+        return {"english": m.group(1).strip(), "tamil": m.group(2).strip()}
+
+    # Check if purely numbers or survey format
+    if re.match(r'^[0-9A-Za-z/,\.\-\s]+$', raw_s) and not any('\u0b80' <= c <= '\u0bff' for c in raw_s):
+        return {"english": raw_s, "tamil": raw_s}
+
+    return {"english": formatted, "tamil": raw_s}
 
 
 def format_bilingual_owner(raw_owner_str: str) -> str:
@@ -684,4 +705,126 @@ def translate_word_bilingual(word: str) -> str:
         return dynamic_english_to_tamil(clean)
 
     return ""
+
+
+# --------------------------------------------------------------------------
+# General Purpose Tamil Text Transliteration & Normalization
+# --------------------------------------------------------------------------
+
+BANK_AND_INSTITUTION_MAP = {
+    "பேங்க் ஆப் பரோடா": "Bank of Baroda",
+    "ேபங்க் ஆப் பேராடா": "Bank of Baroda",
+    "பேங்க் ஆப் பேராடா": "Bank of Baroda",
+    "பேங்க் ஆப்": "Bank of",
+    "ேபங்க் ஆப்": "Bank of",
+    "பரோடா": "Baroda",
+    "பேராடா": "Baroda",
+    "பேங்க் ஆப் மகாராஷ்ட்ரா": "Bank of Maharashtra",
+    "ேபங்க் ஆப் மகாராஷ்ட்ரா": "Bank of Maharashtra",
+    "மகாராஷ்ட்ரா": "Maharashtra",
+    "ரெப்கோ ஹோம் பைனான்ஸ்": "Repco Home Finance",
+    "ெரப்ேகா ேஹாம் ைபனான்ஸ்": "Repco Home Finance",
+    "ரெப்கோ": "Repco",
+    "ெரப்ேகா": "Repco",
+    "ஹோம் பைனான்ஸ்": "Home Finance",
+    "ேஹாம் ைபனான்ஸ்": "Home Finance",
+    "ஹோம்": "Home",
+    "ேஹாம்": "Home",
+    "பைனான்ஸ்": "Finance",
+    "ைபனான்ஸ்": "Finance",
+    "ஐடிபிஐ பேங்க்": "IDBI Bank",
+    "ஐ.டி.பி.ஐ பேங்க்": "IDBI Bank",
+    "ஐடிபிஐ ேபங்க்": "IDBI Bank",
+    "ஐடிபிஐ": "IDBI Bank",
+    "சிட்டி யூனியன் பேங்க் லிமிடெட்": "City Union Bank Limited",
+    "சிட்டி யூனியன் பேங்க்": "City Union Bank",
+    "ஸ்டேட் பேங்க் ஆப் இந்தியா": "State Bank of India",
+    "இந்தியன் ஓவர்சீஸ் பேங்க்": "Indian Overseas Bank",
+    "திவான் ஹவுசிங் பைனான்ஸ் கார்ப்பரேஷன் லிமிடெட்": "Dewan Housing Finance Corporation Limited (DHFL)",
+    "திவான் ஹவுசிங்": "DHFL",
+    "செங்கல்பட்டு கிளை": "Chengalpattu Branch",
+    "ெசங்கல்பட்டு கிைள": "Chengalpattu Branch",
+    "செங்கல்பட்டு": "Chengalpattu",
+    "ெசங்கல்பட்டு": "Chengalpattu",
+    "கிளை": "Branch",
+    "கிைள": "Branch",
+    "முதல்வர்": "Principal",
+    "முகவர்": "Agent",
+    "ஏஜெண்ட்": "Agent",
+    "ஏெஜண்ட்": "Agent",
+    "பிரின்ஸ்பால்": "Principal",
+    "விற்பனையாளர்": "Vendor",
+    "வாங்குபவர்": "Purchaser",
+    "கிரயப்பத்திரம்": "Sale Deed",
+    "கிைரயப்பத்திரம்": "Sale Deed",
+    "அடமானம்": "Mortgage",
+    "ரசீது": "Receipt",
+    "விடுதலை": "Discharge",
+    "ரமேஷ்": "Ramesh",
+    "ரேமஷ்": "Ramesh",
+    "நதியா": "Nathiya",
+    "சுரேஷ் குமார்": "Suresh Kumar",
+    "சுேரஷ் குமார்": "Suresh Kumar",
+    "தியாகராஜன்": "Thiyagarajan",
+    "நஜீர் அகமது": "Najeer Ahamed",
+    "நஜர்ீ அகமது": "Najeer Ahamed",
+    "ஹாஜிரா பானு": "Hajira Banu",
+    "தேவிமோகன்": "Devi Mohan",
+    "ேதவிேமாகன்": "Devi Mohan",
+    "தேவிமேகான்": "Devi Mohan",
+    "ேதவிேமகான்": "Devi Mohan",
+    "சாதிக் அலி": "Sadiq Ali",
+    "விஜயலட்சுமி": "Vijayalakshmi",
+    "லலிதா": "Lalitha",
+}
+
+
+def normalize_tamil_visual_order(text: str) -> str:
+    """
+    Normalizes visual-order Tamil text to standard canonical logical-order Unicode.
+    Handles pre-base vowels (ெ, ே, ை), split vowels (ொ, ோ, ௌ), and inverted virama-vowels (ர்ீ -> ீர்).
+    """
+    if not text:
+        return ""
+    s = str(text)
+    # 1. Pre-base vowels (ெ, ே, ை) placed before consonants in visual encoding -> move after consonant
+    s = re.sub(r'([ெேை])([க-ஹ])', r'\2\1', s)
+    # 2. Composite two-part vowels (ொ, ோ, ௌ)
+    s = re.sub(r'([க-ஹ])ொ', r'\1ொ', s)
+    s = re.sub(r'([க-ஹ])ோ', r'\1ோ', s)
+    s = re.sub(r'([க-ஹ])ௌ', r'\1ௌ', s)
+    # 3. Inverted virama / vowel ordering fixes (e.g. ர்ீ -> ீர்)
+    s = re.sub(r'ர்ீ', 'ீர்', s)
+    s = re.sub(r'ர்ி', 'ிர்', s)
+    s = re.sub(r'([க-ஹ])்([ா-ௌ])', r'\1\2', s)
+    return s
+
+
+def transliterate_tamil_text(text: str) -> str:
+    """
+    Translates or transliterates any Tamil text into natural English.
+    Used by PDF generators, reports, and export engines to ensure zero blank tokens.
+    """
+    if not text or text == "-":
+        return text or "-"
+    s = normalize_tamil_visual_order(text)
+    if not any('\u0b80' <= c <= '\u0bff' for c in s):
+        return s
+
+    # 1. First check multi-word dictionary
+    for k, v in BANK_AND_INSTITUTION_MAP.items():
+        if k in s:
+            s = s.replace(k, v)
+
+    # 2. Transliterate remaining Tamil tokens
+    def _trans_match(m):
+        tok = m.group(0)
+        norm_tok = normalize_tamil_visual_order(tok)
+        if norm_tok in BANK_AND_INSTITUTION_MAP:
+            return BANK_AND_INSTITUTION_MAP[norm_tok]
+        return dynamic_transliterate_tamil(norm_tok)
+
+    s = re.sub(r'[\u0b80-\u0bff]+', _trans_match, s)
+    s = re.sub(r'\s+', ' ', s).strip()
+    return s
 

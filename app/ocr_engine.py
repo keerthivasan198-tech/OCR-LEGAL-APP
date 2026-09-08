@@ -38,10 +38,43 @@ class OCREngine:
     def _init_models(self):
         self.paddle_available = False
         try:
+            # Fix Windows Python 3.13 DLL search path for PyTorch / Paddle
+            import sys
+            if sys.platform == "win32":
+                torch_lib = os.path.join(sys.prefix, "Lib", "site-packages", "torch", "lib")
+                if os.path.exists(torch_lib):
+                    try:
+                        os.add_dll_directory(torch_lib)
+                    except Exception:
+                        pass
+                try:
+                    import torch
+                except Exception:
+                    pass
+
+            # Disable MKLDNN/oneDNN PIR CPU instruction bug on Windows
+            os.environ["FLAGS_use_mkldnn"] = "0"
+            os.environ["FLAGS_enable_pir_api"] = "0"
+            os.environ["FLAGS_enable_pir_in_executor"] = "0"
+            os.environ["PADDLE_ONEDNN_DISABLE"] = "1"
+
+            import paddle
+            try:
+                paddle.set_flags({
+                    'FLAGS_use_mkldnn': False,
+                    'FLAGS_enable_pir_api': False,
+                    'FLAGS_enable_pir_in_executor': False
+                })
+            except Exception:
+                pass
+
+            import paddle.inference as paddle_infer
+            paddle_infer.Config.enable_mkldnn = lambda self: self.disable_mkldnn()
+
             from paddleocr import PaddleOCR
             self.PaddleOCR = PaddleOCR
             self.paddle_available = True
-            logger.info("PaddleOCR module loaded successfully.")
+            logger.info("PaddleOCR module loaded successfully with oneDNN/PIR CPU safeguards enabled.")
         except Exception as e:
             logger.error(f"PaddleOCR import error: {e}")
 
@@ -51,7 +84,7 @@ class OCREngine:
             logger.info("Loading PaddleOCR-VL-1.6 Tamil pipeline: PaddleOCR(lang='ta')...")
             self._pipeline_ta = self.PaddleOCR(
                 lang="ta",
-                use_doc_orientation_classify=True,
+                use_doc_orientation_classify=False,
                 use_doc_unwarping=False,
                 use_textline_orientation=True,
             )
@@ -64,7 +97,7 @@ class OCREngine:
             logger.info("Loading PaddleOCR-VL-1.6 English pipeline: PaddleOCR(lang='en')...")
             self._pipeline_en = self.PaddleOCR(
                 lang="en",
-                use_doc_orientation_classify=True,
+                use_doc_orientation_classify=False,
                 use_doc_unwarping=False,
                 use_textline_orientation=True,
             )
@@ -372,36 +405,122 @@ class OCREngine:
 
         return lines
 
+    def _run_easyocr_fallback(self, img_np, width, height, lang="ta"):
+        """Fallback OCR engine using EasyOCR for image extraction when PaddlePaddle encounters PIR errors."""
+        try:
+            import easyocr
+            langs = ['ta', 'en'] if lang == "ta" else ['en']
+            reader = easyocr.Reader(langs, gpu=False, verbose=False)
+            results = reader.readtext(img_np)
+            lines = []
+            for item in results:
+                bbox, text, score = item[0], item[1], item[2]
+                if not text.strip() or score < 0.2:
+                    continue
+                xs = [float(pt[0]) for pt in bbox]
+                ys = [float(pt[1]) for pt in bbox]
+                min_x = max(0.0, min(xs))
+                min_y = max(0.0, min(ys))
+                max_x = min(float(width), max(xs))
+                max_y = min(float(height), max(ys))
+                w = max(5.0, max_x - min_x)
+                h = max(5.0, max_y - min_y)
+
+                rect = {
+                    "x": round(min_x, 1),
+                    "y": round(min_y, 1),
+                    "w": round(w, 1),
+                    "h": round(h, 1),
+                    "x_pct": round((min_x / width) * 100, 2),
+                    "y_pct": round((min_y / height) * 100, 2),
+                    "w_pct": round((w / width) * 100, 2),
+                    "h_pct": round((h / height) * 100, 2),
+                }
+                lines.append({
+                    "text": text.strip(),
+                    "confidence": round(float(score), 4),
+                    "rect": rect
+                })
+            return lines
+        except Exception as e:
+            logger.warning(f"EasyOCR fallback error: {e}")
+            return []
+
+    @staticmethod
+    def clean_tamil_ocr_text(text: str) -> str:
+        """Normalize Tamil OCR ligatures, punctuation artifacts, and common character misrecognitions."""
+        if not text:
+            return ""
+        import unicodedata
+        t = unicodedata.normalize('NFC', text)
+        # Strip raw CID font artifacts e.g. (cid:2), (cid:39)
+        t = re.sub(r'\(cid:\d+\)', '', t)
+        # Fix noisy quotes and punctuation inserted inside words
+        t = re.sub(r"மாவ['`’]டம்", "மாவட்டம்", t)
+        t = re.sub(r"வ['`’]டம்", "வட்டம்", t)
+        t = re.sub(r"ப['`’]டா", "பட்டா", t)
+        t = re.sub(r"\bதநாடூ\s*அர\b", "தமிழ்நாடு அரசு", t)
+        t = re.sub(r"\bமேலாணமை\b", "மேலாண்மை", t)
+        t = re.sub(r"இ\.எ[ரர]\s*10\(1\)", "படிவம் எண் 10(1)", t)
+        t = re.sub(r"இ\.எ[ரர]", "படிவம் எண்", t)
+        t = re.sub(r"உரிமையாள[கேர][\s|]*பெய[ரர]", "உரிமையாளர்கள் பெயர்", t)
+        t = re.sub(r"\bமக\+\b", "மகன்", t)
+        t = re.sub(r"\bந\+செ\b", "நஞ்சை", t)
+        t = re.sub(r"\b7\+செ\b", "புஞ்சை", t)
+        t = re.sub(r"எ[ரர]\b", "எண்", t)
+        t = re.sub(r"பெய[ரர]\b", "பெயர்", t)
+        return t.strip()
+
     # -- Public API --
 
     def process_image(self, image, lang="ta"):
-        """Process a single image through the dual OCR pipeline."""
-        width, height = image.size
-        img_np = np.array(image)
+        """Process a single image through the dual OCR pipeline with EasyOCR fallback and image pre-processing."""
+        # Pre-process image: upscale low-res documents for crisp character segmentation
+        orig_w, orig_h = image.size
+        processed_img = image
+        scale_factor = 1.0
+
+        if max(orig_w, orig_h) < 1600:
+            scale_factor = min(3.0, 1800.0 / max(orig_w, orig_h))
+            new_w = int(orig_w * scale_factor)
+            new_h = int(orig_h * scale_factor)
+            processed_img = image.resize((new_w, new_h), Image.Resampling.LANCZOS)
+            logger.info(f"Upscaled image {orig_w}x{orig_h} -> {new_w}x{new_h} (scale={scale_factor:.2f}) for enhanced Tamil OCR.")
+
+        if processed_img.mode != "RGB":
+            processed_img = processed_img.convert("RGB")
+
+        cur_w, cur_h = processed_img.size
+        img_np = np.array(processed_img)
         lines_data = []
 
         if self.paddle_available:
-            pipeline_ta = self._get_pipeline_ta()
-            pipeline_en = self._get_pipeline_en()
-
-            if pipeline_ta is not None:
-                ta_texts, ta_scores, ta_polys = self._run_pipeline(pipeline_ta, img_np)
+            if lang == "en":
+                pipeline_en = self._get_pipeline_en()
+                en_texts, en_scores, en_polys = self._run_pipeline(pipeline_en, img_np) if pipeline_en else ([], [], [])
+                lines_data = self._merge_lines([], [], [], en_texts, en_scores, en_polys, cur_w, cur_h)
+            else:
+                pipeline_ta = self._get_pipeline_ta()
+                ta_texts, ta_scores, ta_polys = self._run_pipeline(pipeline_ta, img_np) if pipeline_ta else ([], [], [])
                 logger.info(f"Tamil pipeline: {len(ta_texts)} lines detected")
-            else:
-                ta_texts, ta_scores, ta_polys = [], [], []
+                if len(ta_texts) > 0:
+                    lines_data = self._merge_lines(ta_texts, ta_scores, ta_polys, [], [], [], cur_w, cur_h)
+                else:
+                    pipeline_en = self._get_pipeline_en()
+                    en_texts, en_scores, en_polys = self._run_pipeline(pipeline_en, img_np) if pipeline_en else ([], [], [])
+                    lines_data = self._merge_lines([], [], [], en_texts, en_scores, en_polys, cur_w, cur_h)
 
-            if pipeline_en is not None:
-                en_texts, en_scores, en_polys = self._run_pipeline(pipeline_en, img_np)
-                logger.info(f"English pipeline: {len(en_texts)} lines detected")
-            else:
-                en_texts, en_scores, en_polys = [], [], []
+            logger.info(f"PaddleOCR extracted: {len(lines_data)} lines")
 
-            lines_data = self._merge_lines(
-                ta_texts, ta_scores, ta_polys,
-                en_texts, en_scores, en_polys,
-                width, height,
-            )
-            logger.info(f"Merged: {len(lines_data)} lines")
+        # If Paddle pipeline returned 0 lines, invoke EasyOCR fallback
+        if not lines_data:
+            logger.info("PaddleOCR returned 0 lines. Invoking EasyOCR fallback...")
+            lines_data = self._run_easyocr_fallback(img_np, cur_w, cur_h, lang=lang)
+
+        # Normalize Tamil OCR text in all lines
+        for line in lines_data:
+            if "text" in line:
+                line["text"] = self.clean_tamil_ocr_text(line["text"])
 
         # Generate word-level bounding boxes and dynamic translations for scanned lines
         all_words = []
@@ -440,108 +559,92 @@ class OCREngine:
         preview_url = self.image_to_base64(image)
 
         return {
-            "width": width,
-            "height": height,
+            "width": orig_w,
+            "height": orig_h,
             "lines": lines_data,
             "words": all_words,
             "full_text": "\n".join(full_text_lines),
             "preview_url": preview_url,
         }
 
-    def _extract_native_pdf_lines(self, tp, width_pt, height_pt):
-        """Extract lines, words, and bounding boxes directly from native PDF textpage with 100% character precision."""
-        text = tp.get_text_range()
-        lines = []
-        curr_offset = 0
-        total_chars = tp.count_chars()
+    def _extract_native_pdf_lines(self, pdfplumber_page, width_pt, height_pt):
+        """Extract lines, words, and bounding boxes directly from native PDF page with 100% character and spatial precision."""
+        raw_words = pdfplumber_page.extract_words()
+        if not raw_words:
+            return [], []
 
-        for raw_line in text.splitlines(keepends=True):
-            clean_str = raw_line.strip('\r\n')
-            line_len = len(raw_line)
-            if not clean_str.strip():
-                curr_offset += line_len
+        all_words = []
+        for w in raw_words:
+            w_text = w.get("text", "").strip()
+            if not w_text:
                 continue
+            x0 = max(0.0, float(w.get("x0", 0.0)))
+            top = max(0.0, float(w.get("top", 0.0)))
+            x1 = min(float(width_pt), float(w.get("x1", x0 + 5.0)))
+            bottom = min(float(height_pt), float(w.get("bottom", top + 5.0)))
+            w_val = max(2.0, x1 - x0)
+            h_val = max(2.0, bottom - top)
 
-            start_offset = raw_line.find(clean_str)
-            start_char = curr_offset + start_offset
-            end_char = start_char + len(clean_str)
+            norm_text = self.clean_tamil_ocr_text(w_text)
+            w_trans = translate_word_bilingual(norm_text)
+            all_words.append({
+                "text": norm_text,
+                "translation": w_trans,
+                "confidence": 0.99,
+                "x": round(x0, 1),
+                "y": round(top, 1),
+                "w": round(w_val, 1),
+                "h": round(h_val, 1),
+                "x_pct": round((x0 / width_pt) * 100, 2),
+                "y_pct": round((top / height_pt) * 100, 2),
+                "w_pct": round((w_val / width_pt) * 100, 2),
+                "h_pct": round((h_val / height_pt) * 100, 2),
+            })
 
-            xs, ys = [], []
-            words_in_line = []
+        # Group words into natural reading order lines
+        text_lines = pdfplumber_page.extract_text_lines(layout=False)
+        lines = []
+        for tl in text_lines:
+            t_text = self.clean_tamil_ocr_text(tl.get("text", "").strip())
+            if not t_text:
+                continue
+            lx0 = max(0.0, float(tl.get("x0", 0.0)))
+            ltop = max(0.0, float(tl.get("top", 0.0)))
+            lx1 = min(float(width_pt), float(tl.get("x1", lx0 + 5.0)))
+            lbottom = min(float(height_pt), float(tl.get("bottom", ltop + 5.0)))
+            lw = max(4.0, lx1 - lx0)
+            lh = max(4.0, lbottom - ltop)
 
-            # Extract word-level bounding boxes for fine-grained phrase, translation, and field mapping
-            for m in re.finditer(r'\S+', clean_str):
-                w_text = m.group()
-                w_start = start_char + m.start()
-                w_end = start_char + m.end()
-                w_xs, w_ys = [], []
-                for c in range(w_start, min(w_end, total_chars)):
-                    wb = tp.get_charbox(c)
-                    if wb and (wb[2] > wb[0]) and (wb[3] > wb[1]):
-                        w_xs.extend([wb[0], wb[2]])
-                        w_ys.extend([wb[1], wb[3]])
-                if w_xs and w_ys:
-                    w_min_x = max(0.0, min(w_xs))
-                    w_max_x = min(width_pt, max(w_xs))
-                    w_min_y = max(0.0, min(w_ys))
-                    w_max_y = min(height_pt, max(w_ys))
-                    w_top_y = height_pt - w_max_y
-                    w_trans = translate_word_bilingual(w_text)
-                    words_in_line.append({
-                        "text": w_text,
-                        "translation": w_trans,
-                        "confidence": 0.99,
-                        "x": round(w_min_x, 1),
-                        "y": round(w_top_y, 1),
-                        "w": round(max(2.0, w_max_x - w_min_x), 1),
-                        "h": round(max(2.0, w_max_y - w_min_y), 1),
-                        "x_pct": round((w_min_x / width_pt) * 100, 2),
-                        "y_pct": round((w_top_y / height_pt) * 100, 2),
-                        "w_pct": round((max(2.0, w_max_x - w_min_x) / width_pt) * 100, 2),
-                        "h_pct": round((max(2.0, w_max_y - w_min_y) / height_pt) * 100, 2),
-                    })
+            # Associate words belonging to this line
+            line_words = [
+                w for w in all_words
+                if (ltop - 3.0 <= w["y"] <= lbottom + 3.0) and (lx0 - 4.0 <= w["x"] <= lx1 + 4.0)
+            ]
 
-            for c in range(start_char, min(end_char, total_chars)):
-                box = tp.get_charbox(c)
-                if box and (box[2] > box[0]) and (box[3] > box[1]):
-                    xs.extend([box[0], box[2]])
-                    ys.extend([box[1], box[3]])
+            lines.append({
+                "text": t_text,
+                "confidence": 0.99,
+                "words": line_words,
+                "rect": {
+                    "x": round(lx0, 1),
+                    "y": round(ltop, 1),
+                    "w": round(lw, 1),
+                    "h": round(lh, 1),
+                    "x_pct": round((lx0 / width_pt) * 100, 2),
+                    "y_pct": round((ltop / height_pt) * 100, 2),
+                    "w_pct": round((lw / width_pt) * 100, 2),
+                    "h_pct": round((lh / height_pt) * 100, 2),
+                }
+            })
 
-            if xs and ys:
-                min_x = max(0.0, min(xs))
-                max_x = min(width_pt, max(xs))
-                min_y = max(0.0, min(ys))
-                max_y = min(height_pt, max(ys))
-                top_y = height_pt - max_y
-                rect_w = max(5.0, max_x - min_x)
-                rect_h = max(5.0, max_y - min_y)
-
-                lines.append({
-                    "text": clean_str.strip(),
-                    "confidence": 0.99,
-                    "words": words_in_line,
-                    "rect": {
-                        "x": round(min_x, 1),
-                        "y": round(top_y, 1),
-                        "w": round(rect_w, 1),
-                        "h": round(rect_h, 1),
-                        "x_pct": round((min_x / width_pt) * 100, 2),
-                        "y_pct": round((top_y / height_pt) * 100, 2),
-                        "w_pct": round((rect_w / width_pt) * 100, 2),
-                        "h_pct": round((rect_h / height_pt) * 100, 2),
-                    }
-                })
-
-            curr_offset += line_len
-
-        return lines
+        return lines, all_words
 
     def process_file(self, file_bytes, filename, lang="ta"):
         """
         Process a file (PDF or image) through the dual OCR pipeline.
         Supports multi-page documents (e.g. 1 to 30+ pages) without missing any pages:
-        - For digital PDFs with native text: extracts exact text & boxes in milliseconds
-        - For scanned PDFs / images: runs the dual PaddleOCR (Tamil+English) pipeline
+        - For digital PDFs with native text: extracts exact text & boxes via pdfplumber
+        - For scanned PDFs / images: runs the dual PaddleOCR + EasyOCR pipeline
         """
         if isinstance(file_bytes, str):
             with open(file_bytes, "rb") as f:
@@ -552,27 +655,57 @@ class OCREngine:
         all_text_parts = []
 
         if ext == ".pdf":
-            pdf = pdfium.PdfDocument(file_bytes)
-            num_pages = len(pdf)
+            import io
+            import pdfplumber
+            import pypdfium2 as pdfium
+
+            pdf_plum = pdfplumber.open(io.BytesIO(file_bytes))
+            pdf_ium = pdfium.PdfDocument(file_bytes)
+            num_pages = len(pdf_plum.pages)
             logger.info(f"Processing PDF '{filename}' with {num_pages} pages...")
 
             for idx in range(num_pages):
-                page = pdf[idx]
-                width_pt, height_pt = page.get_size()
+                plum_page = pdf_plum.pages[idx]
+                ium_page = pdf_ium[idx]
+                width_pt = float(plum_page.width)
+                height_pt = float(plum_page.height)
 
-                # Render high-resolution page image for PaddleOCR-VL-1.6
+                # Render high-resolution page image for visual preview and bounding box overlays
                 scale = 2.0
-                bitmap = page.render(scale=scale)
+                bitmap = ium_page.render(scale=scale)
                 pil_image = bitmap.to_pil()
+                preview_url = self.image_to_base64(pil_image)
 
-                # Process through PaddleOCR-VL-1.6 vision pipeline
-                page_res = self.process_image(pil_image, lang=lang)
-                page_res["page_number"] = idx + 1
-                page_res["preview_url"] = self.image_to_base64(pil_image)
+                # Extract native digital PDF lines & words with exact top-left coordinates
+                native_lines, native_words = self._extract_native_pdf_lines(plum_page, width_pt, height_pt)
+                joined_text = plum_page.extract_text() or ""
+                is_cid_corrupted = "(cid:" in joined_text or bool(re.search(r'\(cid:\d+\)', joined_text))
+
+                if len(joined_text.strip()) >= 15 and native_lines and not is_cid_corrupted:
+                    full_text = "\n".join(l["text"] for l in native_lines)
+                    page_res = {
+                        "page_number": idx + 1,
+                        "width": int(width_pt),
+                        "height": int(height_pt),
+                        "lines": native_lines,
+                        "words": native_words,
+                        "full_text": full_text,
+                        "preview_url": preview_url,
+                    }
+                else:
+                    # Non-Unicode CID font stream or scanned PDF: run PaddleOCR vision engine
+                    if is_cid_corrupted:
+                        logger.info(f"Page {idx + 1} contains non-Unicode CID-encoded fonts. Running PaddleOCR-VL-1.6 Vision Engine for clean character extraction...")
+                    page_res = self.process_image(pil_image, lang=lang)
+                    page_res["page_number"] = idx + 1
+                    page_res["preview_url"] = preview_url
 
                 pages.append(page_res)
                 if page_res.get("full_text"):
                     all_text_parts.append(f"--- PAGE {idx + 1} ---\n" + page_res["full_text"])
+
+            pdf_plum.close()
+            pdf_ium.close()
         else:
             images = self.convert_file_to_images(file_bytes, filename)
             for idx, img in enumerate(images):

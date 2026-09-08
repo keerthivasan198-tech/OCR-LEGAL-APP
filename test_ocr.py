@@ -290,6 +290,88 @@ FORM NO. 15 (படிவம் எண் 15)
         self.assertGreater(len(pdf_bytes), 1000)
         self.assertTrue(pdf_bytes.startswith(b"%PDF"))
 
+    def test_extraction_validator_and_safeguards(self):
+        """Verify deterministic safeguards for Survey No, DPDP Masked Aadhaar, and Poramboke."""
+        from app.validator import ExtractionValidator
+
+        # 1. Survey & Subdivision Validation
+        ocr_stream = "Property situated at Survey No. 142/2B, Alappakkam Village"
+        res_valid = ExtractionValidator.validate_survey_and_subdivision("142/2B", ocr_stream)
+        self.assertTrue(res_valid["valid"])
+        self.assertFalse(res_valid["needs_review"])
+
+        res_diverged = ExtractionValidator.validate_survey_and_subdivision("142/28", ocr_stream)
+        self.assertFalse(res_diverged["valid"])
+        self.assertTrue(res_diverged["needs_review"])
+        self.assertEqual(res_diverged["suggested_value"], "142/2B")
+
+        # 2. DPDP Masked Aadhaar enforcement
+        masked_1 = ExtractionValidator.enforce_dpdp_masking("1234 5678 9012")
+        self.assertEqual(masked_1, "XXXX-XXXX-9012")
+
+        masked_2 = ExtractionValidator.enforce_dpdp_masking("XXXX-XXXX-4567")
+        self.assertEqual(masked_2, "XXXX-XXXX-4567")
+
+        # 3. Poramboke Detection
+        is_p1, p_desc1 = ExtractionValidator.check_poramboke_status("Government Poramboke Waterbody")
+        self.assertTrue(is_p1)
+        self.assertIn("Poramboke", p_desc1)
+
+        is_p2, p_desc2 = ExtractionValidator.check_poramboke_status("Ryotwari Patta Land")
+        self.assertFalse(is_p2)
+        self.assertIn("Private", p_desc2)
+
+        # 4. Extent Normalization
+        sqft_cents = ExtractionValidator.normalize_extent_to_sqft("5.25 Cents")
+        self.assertAlmostEqual(sqft_cents, 5.25 * 435.6, places=1)
+
+        sqft_grounds = ExtractionValidator.normalize_extent_to_sqft("2 Grounds")
+        self.assertEqual(sqft_grounds, 4800.0)
+
+    def test_patta_form10_extraction(self):
+        """Verify 100% extraction for Patta Form 10(1) with joint ownership, extent, and revenue check."""
+        patta_sample_text = """தமிழ்நாடு அரசு - வருவாய்த்துறை
+நில உரிமை விபரங்கள் : 10(1) பிரிவு சான்று
+PATTA EXTRACT - TAMIL NADU REVENUE DEPARTMENT
+
+பட்டா எண்: 1092
+உரிமையாளர்கள் பெயர்:
+1. பக்கிரிசாமி மகன் கோவிந்தராசு
+2. ஜெயலட்சுமி மனைவி பக்கிரிசாமி
+
+மாவட்டம்: திருவாரூர்
+வட்டம்: நன்னிலம்
+வருவாய் கிராமம்: தூத்துக்குடி
+
+புல எண் | உட்பிரிவு | நஞ்சை பரப்பு (ஹெக் - ஏர்)
+30 | 3B | 0.28.50
+30 | 5B | 0.11.50
+மொத்தம் | 0.40.00
+"""
+        extracted = self.extractor.extract(patta_sample_text, doc_type="patta")
+        fields = extracted["fields"]
+
+        self.assertEqual(fields["patta_number"]["value"], "1092")
+        self.assertIn("Pakkirisamy", fields["owner_name"]["value"])
+        self.assertIn("30-3B", fields["survey_numbers"]["value"])
+        self.assertIn("30-5B", fields["survey_numbers"]["value"])
+        self.assertIn("Thiruvarur", fields["district"]["value"])
+        self.assertIn("Nannilam", fields["taluk"]["value"])
+        self.assertIn("Thoothukudi", fields["village"]["value"])
+        self.assertIn("0.28.50", fields["extent_details"]["value"])
+        self.assertIn("Nanjai (Wet", fields["nature_of_land"]["value"])
+        self.assertIn("Used to confirm", fields["revenue_owner_confirmation"]["value"])
+
+    def test_llm_status_endpoint(self):
+        """Verify /api/llm/status reports model name, base url, and fallback status."""
+        res = self.client.get("/api/llm/status")
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertIn("llm_available", data)
+        self.assertIn("recommended_model", data)
+        self.assertEqual(data["recommended_model"], "Qwen2.5-7B-Instruct-GGUF (Q4_K_M)")
+
+
 if __name__ == "__main__":
     unittest.main()
 

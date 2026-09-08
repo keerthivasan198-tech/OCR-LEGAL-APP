@@ -34,6 +34,7 @@ from app.extractors import (
     LoanDocsExtractor,
     TSLRExtractor
 )
+from app.translator import format_bilingual_field_dict
 
 # ── Tamil → English Lookup Tables ────────────────────────────────────
 
@@ -226,14 +227,128 @@ class DocumentExtractor:
         if field_key in [
             "nature_of_land", "transactions_table", "boundaries", "parties_summary",
             "total_transactions", "encumbrance_status", "form_type", "latest_document_number",
-            "property_extent", "plot_flat_no", "pr_numbers"
+            "property_extent", "plot_flat_no", "pr_numbers", "revenue_owner_confirmation"
         ]:
             return None
 
         def norm(s):
             return re.sub(r'[^A-Za-z0-9\u0b80-\u0bff]', '', str(s)).lower()
 
-        # Build anchors
+        # Extract search targets and anchor phrases
+        clean_val = text.split('(')[0].strip() if '(' in text else text.strip()
+        
+        # 1. Word-level Search Strategy (Highest precision)
+        for p_idx, page in enumerate(pages):
+            page_num = page.get("page_number", p_idx + 1)
+            words = (page.get("words") or [])
+            if not words:
+                words = [w for l in page.get("lines", []) for w in l.get("words", [])]
+
+            # 1a. Patta Number: search exact digit word
+            if field_key == "patta_number":
+                digits = re.findall(r'\b\d{3,6}\b', text)
+                if digits:
+                    for d in digits:
+                        for w in words:
+                            if w.get("text", "").strip() == d or d in w.get("text", ""):
+                                return {
+                                    "page_index": p_idx,
+                                    "page_number": page_num,
+                                    "x_pct": max(0.0, round(w["x_pct"] - 0.5, 2)),
+                                    "y_pct": max(0.0, round(w["y_pct"] - 0.2, 2)),
+                                    "w_pct": min(95.0, round(w["w_pct"] + 1.2, 2)),
+                                    "h_pct": min(20.0, round(w["h_pct"] + 0.6, 2)),
+                                }
+
+            # 1b. Survey Numbers: search survey tokens and form a neat column box
+            if field_key == "survey_numbers":
+                survey_tokens = [norm(s) for s in re.split(r'[,|\n\s]+', text) if len(norm(s)) >= 2]
+                matched_survey_words = []
+                for w in words:
+                    wn = norm(w.get("text", ""))
+                    # Match exact survey tokens (e.g. 30-3B, 30-5B) and ignore row numbers 1 or 2
+                    if len(wn) >= 3 and any(wn == st or (len(st) >= 4 and st in wn) for st in survey_tokens):
+                        if w.get("x_pct", 0) < 50:
+                            matched_survey_words.append(w)
+                if matched_survey_words:
+                    min_x = min(w["x_pct"] for w in matched_survey_words)
+                    min_y = min(w["y_pct"] for w in matched_survey_words)
+                    max_x = max(w["x_pct"] + w["w_pct"] for w in matched_survey_words)
+                    max_y = max(w["y_pct"] + w["h_pct"] for w in matched_survey_words)
+                    return {
+                        "page_index": p_idx,
+                        "page_number": page_num,
+                        "x_pct": max(0.0, round(min_x - 0.6, 2)),
+                        "y_pct": max(0.0, round(min_y - 0.3, 2)),
+                        "w_pct": min(25.0, round(max(4.0, max_x - min_x + 1.2), 2)),
+                        "h_pct": min(35.0, round(max(2.0, max_y - min_y + 0.6), 2)),
+                    }
+
+            # 1c. Location Fields (Village / Taluk / District): search place word
+            if field_key in ["village", "taluk", "district"]:
+                place_tokens = [norm(t) for t in re.split(r'[,/()|\n\s]+', text) if len(norm(t)) >= 3 and norm(t) not in ["district", "taluk", "village", "revenue", "மாவட்டம்", "வட்டம்", "கிராமம்", "வருவாய்"]]
+                matched_place_words = []
+                for w in words:
+                    wn = norm(w.get("text", ""))
+                    if len(wn) >= 3 and any(pt == wn or (len(pt) >= 4 and pt in wn) for pt in place_tokens):
+                        if w.get("y_pct", 0) < 70:
+                            matched_place_words.append(w)
+                if matched_place_words:
+                    first_w = matched_place_words[0]
+                    return {
+                        "page_index": p_idx,
+                        "page_number": page_num,
+                        "x_pct": max(0.0, round(first_w["x_pct"] - 0.5, 2)),
+                        "y_pct": max(0.0, round(first_w["y_pct"] - 0.2, 2)),
+                        "w_pct": min(35.0, round(first_w["w_pct"] + 1.2, 2)),
+                        "h_pct": min(10.0, round(first_w["h_pct"] + 0.6, 2)),
+                    }
+
+            # 1d. Owner Name: search owner words under ownership section
+            if field_key in ["owner_name", "vendor_details", "purchaser_details"]:
+                owner_tokens = [norm(t) for t in re.split(r'[,/()|\n\s]+', text) if len(norm(t)) >= 3 and norm(t) not in ["owner", "name", "owners", "son", "wife", "மகன்", "மனைவி", "உரிமையாளர்", "பெயர்"]]
+                matched_owner_words = []
+                for w in words:
+                    wn = norm(w.get("text", ""))
+                    if len(wn) >= 3 and any(ot in wn or wn in ot for ot in owner_tokens):
+                        if 10 < w.get("y_pct", 0) < 65:
+                            matched_owner_words.append(w)
+                if matched_owner_words:
+                    min_x = min(w["x_pct"] for w in matched_owner_words)
+                    min_y = min(w["y_pct"] for w in matched_owner_words)
+                    max_x = max(w["x_pct"] + w["w_pct"] for w in matched_owner_words)
+                    max_y = max(w["y_pct"] + w["h_pct"] for w in matched_owner_words)
+                    return {
+                        "page_index": p_idx,
+                        "page_number": page_num,
+                        "x_pct": max(0.0, round(min_x - 0.8, 2)),
+                        "y_pct": max(0.0, round(min_y - 0.3, 2)),
+                        "w_pct": min(65.0, round(max(5.0, max_x - min_x + 1.6), 2)),
+                        "h_pct": min(20.0, round(max(2.0, max_y - min_y + 0.8), 2)),
+                    }
+
+            # 1e. Extent Details: search extent numbers (e.g. 0.28.50)
+            if field_key == "extent_details":
+                ext_tokens = re.findall(r'\b\d{1,2}\.\d{2}(?:\.\d{2})?\b', text)
+                matched_ext_words = []
+                for w in words:
+                    if any(et in w.get("text", "") for et in ext_tokens):
+                        matched_ext_words.append(w)
+                if matched_ext_words:
+                    min_x = min(w["x_pct"] for w in matched_ext_words)
+                    min_y = min(w["y_pct"] for w in matched_ext_words)
+                    max_x = max(w["x_pct"] + w["w_pct"] for w in matched_ext_words)
+                    max_y = max(w["y_pct"] + w["h_pct"] for w in matched_ext_words)
+                    return {
+                        "page_index": p_idx,
+                        "page_number": page_num,
+                        "x_pct": max(0.0, round(min_x - 0.6, 2)),
+                        "y_pct": max(0.0, round(min_y - 0.3, 2)),
+                        "w_pct": min(30.0, round(max(4.0, max_x - min_x + 1.2), 2)),
+                        "h_pct": min(40.0, round(max(2.0, max_y - min_y + 0.6), 2)),
+                    }
+
+        # 2. Line-Level Anchor Matching Fallback
         anchors = list(anchor_keywords) if anchor_keywords else []
         if field_key == "search_period":
             anchors.extend(["search period", "தேடுதல் காலம்", "தேடுதல்"])
@@ -241,20 +356,11 @@ class DocumentExtractor:
             anchors.extend(["s.r.o", "சா.ப.அ", "sub registrar", "சார்பதிவாளர்"])
         elif field_key == "certificate_date":
             anchors.extend(["date / நாள்", "date/", "நாள்:", "date:", "date", "நாள்"])
-        elif field_key == "village":
-            anchors.extend(["village /கிராமம்", "village", "கிராமம்"])
-        elif field_key == "district":
-            anchors.extend(["district:", "மாவட்டம்:", "district", "மாவட்டம்"])
-        elif field_key == "taluk":
-            anchors.extend(["taluk:", "வட்டம்:", "taluk", "வட்டம்"])
-        elif field_key == "survey_numbers":
-            anchors.extend(["survey details", "சர்வே விவரம்", "survey no", "புல எண்"])
         elif field_key == "patta_number":
-            anchors.extend(["பட்டா எண்", "patta no", "patta number"])
+            anchors.extend(["பட்டா எண்", "பட்டா", "patta no", "patta number"])
         elif field_key == "owner_name":
-            anchors.extend(["உரிமையாளர் பெயர்", "உரிமையாளர்", "pattadhar", "owner"])
+            anchors.extend(["உரிமையாளர்கள் பெயர்", "உரிமையாளர் பெயர்", "உரிமையாளர்", "pattadhar"])
 
-        # Strategy 1: Search via targeted anchors across pages
         for p_idx, page in enumerate(pages):
             page_num = page.get("page_number", p_idx + 1)
             lines = page.get("lines", [])
@@ -266,140 +372,26 @@ class DocumentExtractor:
                 l_lower = line_text.lower()
                 l_norm = norm(line_text)
 
-                matched_anchor = None
                 for a in anchors:
                     if a.lower() in l_lower or (len(norm(a)) >= 3 and norm(a) in l_norm):
-                        matched_anchor = a
-                        break
-
-                if matched_anchor:
-                    words = line.get("words", [])
-                    matched_words = []
-                    if words:
-                        # Extract words corresponding to the anchor or query value
-                        target_tokens = [norm(w) for w in (text.split() + matched_anchor.split()) if len(norm(w)) >= 2]
-                        for w_obj in words:
-                            wn = norm(w_obj["text"])
-                            if len(wn) >= 2 and any(tt in wn or wn in tt for tt in target_tokens if len(tt) >= 2):
-                                matched_words.append(w_obj)
-
-                    if matched_words:
-                        min_x = min(w["x_pct"] for w in matched_words)
-                        min_y = min(w["y_pct"] for w in matched_words)
-                        max_x = max(w["x_pct"] + w["w_pct"] for w in matched_words)
-                        max_y = max(w["y_pct"] + w["h_pct"] for w in matched_words)
-                        return {
-                            "page_index": p_idx,
-                            "page_number": page_num,
-                            "x": min(w.get("x", 0) for w in matched_words),
-                            "y": min(w.get("y", 0) for w in matched_words),
-                            "w": max(w.get("w", 0) for w in matched_words),
-                            "h": max(w.get("h", 0) for w in matched_words),
-                            "x_pct": round(min_x, 2),
-                            "y_pct": round(min_y, 2),
-                            "w_pct": round(max(3.0, max_x - min_x), 2),
-                            "h_pct": round(max(1.5, max_y - min_y), 2),
-                        }
-                    else:
                         rect = dict(raw_rect)
                         rect["page_index"] = p_idx
                         rect["page_number"] = page_num
+                        rect["w_pct"] = min(50.0, rect.get("w_pct", 50.0))
                         return rect
-
-        # Strategy 2: Direct value / token matching fallback
-        stop_words = {"district", "taluk", "village", "patta", "number", "name", "owners", "owner", 
-                      "revenue", "legal", "heir", "heirs", "all", "the", "and", "for", "with",
-                      "மாவட்டம்", "வட்டம்", "கிராமம்", "பட்டா", "எண்", "பெயர்", "உரிமையாளர்"}
-        
-        tokens = []
-        for segment in re.split(r'[|/,()\n—–\-:]', text):
-            segment = segment.strip()
-            if segment:
-                for word in segment.split():
-                    w = word.strip()
-                    wn = norm(w)
-                    if len(wn) >= 3 and wn not in stop_words:
-                        tokens.append((w, wn))
-
-        matched_rects = []
-        
-        for p_idx, page in enumerate(pages):
-            page_num = page.get("page_number", p_idx + 1)
-            lines = page.get("lines", [])
-            for line in lines:
-                line_text = line.get("text", "")
-                raw_rect = line.get("rect")
-                if not raw_rect:
-                    continue
-                rect = dict(raw_rect)
-                rect["page_index"] = p_idx
-                rect["page_number"] = page_num
-
-                line_norm = norm(line_text)
-                if len(line_norm) < 2:
-                    continue
-
-                # Header location fields should stay in top 65% of page
-                y_pct = rect.get("y_pct", 0)
-                if field_key in ["district", "taluk", "village", "patta_number"] and y_pct > 65:
-                    continue
-
-                # Patta number exact digit match
-                if field_key == "patta_number":
-                    digits = re.findall(r'\b\d{3,6}\b', text)
-                    if digits:
-                        for d in digits:
-                            if re.search(rf'\b{re.escape(d)}\b', line_text):
-                                return rect
-
-                # Survey numbers match
-                if field_key == "survey_numbers":
-                    surveys = [s.strip() for s in text.splitlines() if s.strip()]
-                    for s in surveys:
-                        s_norm = norm(s)
-                        if len(s_norm) >= 3 and s_norm in line_norm:
-                            matched_rects.append(rect)
-                            break
-                    continue
-
-                # Match tokens against line
-                for orig_w, tn in tokens:
-                    if len(tn) >= 3 and tn in line_norm:
-                        matched_rects.append(rect)
-                        break
-
-        if matched_rects:
-            if field_key in ["owner_name", "survey_numbers"] and len(matched_rects) > 1:
-                first_p_idx = matched_rects[0].get("page_index", 0)
-                same_page_rects = [r for r in matched_rects if r.get("page_index") == first_p_idx]
-                min_x = min(r["x_pct"] for r in same_page_rects)
-                min_y = min(r["y_pct"] for r in same_page_rects)
-                max_x = max(r["x_pct"] + r["w_pct"] for r in same_page_rects)
-                max_y = max(r["y_pct"] + r["h_pct"] for r in same_page_rects)
-                return {
-                    "page_index": first_p_idx,
-                    "page_number": same_page_rects[0].get("page_number", first_p_idx + 1),
-                    "x": min(r.get("x", 0) for r in same_page_rects),
-                    "y": min(r.get("y", 0) for r in same_page_rects),
-                    "w": max(r.get("w", 0) for r in same_page_rects),
-                    "h": max(r.get("h", 0) for r in same_page_rects),
-                    "x_pct": round(min_x, 2),
-                    "y_pct": round(min_y, 2),
-                    "w_pct": round(max_x - min_x, 2),
-                    "h_pct": round(max_y - min_y, 2)
-                }
-            return matched_rects[0]
 
         return None
 
-    def extract(self, text, doc_type=None, pages=None):
+    def extract(self, text, doc_type=None, pages=None, file_bytes=None, filename=None, **kwargs):
         if not doc_type or doc_type not in self.categories:
             doc_type = self.detect_document_type(text)
 
         category_meta = self.categories.get(doc_type, self.categories["sale_deed"])
 
         # Always dynamically analyze text extracted from document using dedicated modular extractor
-        if doc_type in self.extractors:
+        if doc_type == "ec":
+            fields = self.extractors[doc_type].extract(text, pdf_bytes=file_bytes, **kwargs)
+        elif doc_type in self.extractors:
             fields = self.extractors[doc_type].extract(text)
         else:
             handler = getattr(self, f"_extract_{doc_type}", self._extract_generic)
@@ -409,10 +401,14 @@ class DocumentExtractor:
         checklist = fields.get("checklist") or self._evaluate_checklist(doc_type, fields, text)
         verification_flags = fields.get("verification_flags", {})
 
-        # Dynamically assign bounding boxes
-        if pages:
-            for k, v in fields.items():
-                if isinstance(v, dict) and "value" in v:
+        # Dynamically assign bounding boxes and bilingual representations
+        for k, v in fields.items():
+            if isinstance(v, dict) and "value" in v:
+                val_raw = v.get("value")
+                if val_raw and not isinstance(val_raw, (dict, list)):
+                    v["bilingual"] = format_bilingual_field_dict(str(val_raw))
+
+                if pages:
                     if v.get("no_box") or ("box_query" in v and not v["box_query"]):
                         if "box" in v:
                             del v["box"]
@@ -901,17 +897,15 @@ class DocumentExtractor:
 
         # Village
         village = self._find_value(text, [
-            r'(?:கிராமம்|வருவாய் கிராமம்)\s*:\s*([^\n\s,]+)',
-            r'(?:village)\s*:\s*([^\n,]+)',
+            r'(?:வருவாய்\s*)?கிராம(?:ம்|த்தின்)?\s*(?:எண்\s*(?:மற்றும்|&)\s*பெயர்|பெயர்|எண்)?\s*[:\-\s]+([^\n|]+)',
+            r'(?:revenue\s*)?village\s*(?:name)?\s*[:\-\s]+([^\n|]+)',
         ])
         if village:
-            village = village.strip()
-            for ta, en in TN_VILLAGES.items():
-                if ta in village:
-                    parts.append(f"{village} கிராமம் ({en} Village)")
-                    break
-            else:
-                parts.append(f"{village} கிராமம் (Thoothukudi Village)")
+            village = re.sub(r'^\d+\s*[-/.:\s]*', '', village.strip()).strip()
+            village = re.sub(r'[\(\[\{]\d+[\)\]\}]', '', village).strip()
+            from app.translator import format_bilingual_entity
+            bilingual_v = format_bilingual_entity(village)
+            parts.append(f"{village} கிராமம் ({bilingual_v})")
 
         return ", ".join(parts) if parts else None
 

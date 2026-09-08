@@ -4,6 +4,7 @@ FastAPI Server for Real Estate & Legal Document OCR Web Application.
 Provides REST API endpoints for:
 - Document categorization & multi-page OCR
 - Deep key-value extraction (with Land/Building/UDS, DPDP Masked Aadhaar)
+- Local AI Service integration (Qwen2.5-7B via llama.cpp)
 - Multi-document Cross-Verification Matrix
 - Dedicated Inherited Property (Varisu & Patta Mutation) Track
 """
@@ -14,7 +15,7 @@ import re
 import csv
 import json
 import logging
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from fastapi import FastAPI, File, UploadFile, Form, HTTPException
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
@@ -25,6 +26,8 @@ from app.extractor import DocumentExtractor
 from app.ocr_engine import OCREngine
 from app.cross_checker import CrossVerificationEngine
 from app.translator import translate_word_bilingual
+from app.llm_engine import QwenDocumentExtractor
+from app.validator import ExtractionValidator
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("OCRServer")
@@ -47,12 +50,23 @@ app.add_middleware(
 extractor = DocumentExtractor()
 ocr_engine = OCREngine()
 cross_checker = CrossVerificationEngine()
+llm_extractor = QwenDocumentExtractor()
 
-# Ensure uploads folder exists
+# Zero-disk persistence policy: Documents and extraction details are processed strictly in RAM and never stored permanently
+uploads_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "uploads")
+if os.path.exists(uploads_dir):
+    for f in os.listdir(uploads_dir):
+        fp = os.path.join(uploads_dir, f)
+        try:
+            if os.path.isfile(fp):
+                os.unlink(fp)
+        except Exception:
+            pass
 os.makedirs("uploads", exist_ok=True)
 
 # Mount static folder
 app.mount("/static", StaticFiles(directory="static"), name="static")
+
 
 @app.get("/", response_class=HTMLResponse)
 async def serve_home():
@@ -63,6 +77,21 @@ async def serve_home():
             return HTMLResponse(content=f.read())
     return HTMLResponse(content="<h1>OCR Service Running</h1><p>static/index.html not found</p>")
 
+
+@app.get("/api/llm/status")
+async def get_llm_status():
+    """Check availability of local Qwen2.5-7B LLM service via llama.cpp."""
+    is_avail = await llm_extractor.is_available()
+    return {
+        "status": "success",
+        "llm_available": is_avail,
+        "base_url": llm_extractor.base_url,
+        "recommended_model": "Qwen2.5-7B-Instruct-GGUF (Q4_K_M)",
+        "port": 8080,
+        "mode": "Local Private Service (OpenAI-compatible)" if is_avail else "Offline (Rule-based & IndicTrans2 fallback active)"
+    }
+
+
 @app.get("/api/categories")
 async def get_document_categories():
     """List all supported document categories and their metadata."""
@@ -71,6 +100,7 @@ async def get_document_categories():
         "count": len(DOCUMENT_CATEGORIES),
         "categories": DOCUMENT_CATEGORIES
     }
+
 
 @app.get("/api/sample/{category_id}")
 async def get_sample_document(category_id: str):
@@ -148,6 +178,7 @@ async def get_sample_document(category_id: str):
         }
     }
 
+
 @app.get("/api/bundles")
 async def list_bundles():
     """List available multi-document verification project bundles."""
@@ -159,6 +190,7 @@ async def list_bundles():
             "description": b["description"]
         })
     return {"status": "success", "bundles": bundles_meta}
+
 
 @app.get("/api/bundle/{bundle_id}")
 async def get_bundle(bundle_id: str):
@@ -182,11 +214,13 @@ async def get_bundle(bundle_id: str):
             "inheritance_check": inh_res
         }
 
+
 @app.post("/api/cross-verify")
 async def run_cross_verification(docs: Dict[str, Any]):
     """Run automated cross-document verification matrix."""
     res = cross_checker.run_standard_cross_check(docs)
     return {"status": "success", "matrix": res}
+
 
 @app.post("/api/inheritance-verify")
 async def run_inheritance_verification(inh_data: Dict[str, Any]):
@@ -194,18 +228,67 @@ async def run_inheritance_verification(inh_data: Dict[str, Any]):
     res = cross_checker.run_inheritance_track_check(inh_data)
     return {"status": "success", "inheritance": res}
 
+
+@app.post("/api/llm/extract")
+async def run_llm_extraction(payload: Dict[str, Any]):
+    """Direct structured extraction using local Qwen2.5-7B LLM engine."""
+    doc_type = payload.get("doc_type", "sale_deed")
+    text = payload.get("text", "")
+    page_num = payload.get("page_num", 1)
+    target_fields = payload.get("target_fields")
+
+    if not text.strip():
+        raise HTTPException(status_code=400, detail="Empty text provided for LLM extraction.")
+
+    is_avail = await llm_extractor.is_available()
+    if not is_avail:
+        # Fallback to local rule-based extractor
+        fallback_res = extractor.extract(text, doc_type=doc_type)
+        return {
+            "status": "fallback",
+            "engine": "Rule-Based + IndicTrans2",
+            "extracted_fields": fallback_res.get("fields", {})
+        }
+
+    llm_res = await llm_extractor.extract_document_fields(
+        doc_type=doc_type,
+        ocr_text=text,
+        page_num=page_num,
+        target_fields=target_fields
+    )
+
+    # Post-process with deterministic validation safeguards
+    for field_k, field_obj in llm_res.items():
+        if isinstance(field_obj, dict) and "value" in field_obj:
+            v_str = str(field_obj["value"])
+            if "survey" in field_k:
+                sy_val = ExtractionValidator.validate_survey_and_subdivision(v_str, text)
+                if not sy_val["valid"] and sy_val.get("suggested_value"):
+                    field_obj["value"] = sy_val["suggested_value"]
+                    field_obj["needs_review"] = True
+            elif "aadhaar" in field_k:
+                field_obj["value"] = ExtractionValidator.enforce_dpdp_masking(v_str)
+
+    return {
+        "status": "success",
+        "engine": "Qwen2.5-7B-Instruct (llama.cpp)",
+        "extracted_fields": llm_res
+    }
+
+
 @app.post("/api/ocr/process")
 async def process_document_upload(
     file: UploadFile = File(...),
     doc_type: Optional[str] = Form("auto"),
-    lang: Optional[str] = Form("ta")
+    lang: Optional[str] = Form("ta"),
+    use_llm: Optional[bool] = Form(False)
 ):
     """Process uploaded file: runs OCR, deep entity extraction, and legal checklist."""
     try:
         content = await file.read()
         filename = file.filename or "uploaded_document"
 
-        logger.info(f"Processing uploaded file: {filename}, size: {len(content)} bytes, type: {doc_type}, lang: {lang}")
+        logger.info(f"Processing uploaded file: {filename}, size: {len(content)} bytes, type: {doc_type}, lang: {lang}, use_llm: {use_llm}")
 
         # Execute OCR engine
         ocr_result = ocr_engine.process_file(content, filename, lang=lang)
@@ -215,12 +298,66 @@ async def process_document_upload(
             text_to_extract = f"Document: {filename}\nNo legible text detected."
 
         target_doc_type = doc_type if doc_type and doc_type != "auto" else None
-        extraction_result = extractor.extract(text_to_extract, doc_type=target_doc_type, pages=ocr_result['pages'])
+        extraction_result = extractor.extract(text_to_extract, doc_type=target_doc_type, pages=ocr_result['pages'], file_bytes=content, filename=filename)
+
+        # If LLM requested and available, enhance fields
+        if use_llm and await llm_extractor.is_available():
+            detected_type = extraction_result.get("document_type_id", "sale_deed")
+            rel_pages = llm_extractor.filter_relevant_pages(ocr_result["pages"], detected_type)
+            combined_text = "\n\n".join(p.get("text", "") for p in rel_pages)
+            llm_fields = await llm_extractor.extract_document_fields(detected_type, combined_text)
+            if llm_fields:
+                fields_dict = extraction_result.setdefault("fields", {})
+                for k, v in llm_fields.items():
+                    if isinstance(v, dict) and v.get("value") is not None:
+                        val_str = str(v.get("value")).strip()
+                        if not val_str or val_str.lower() in ["null", "none", "not detected", "-", ""]:
+                            continue
+
+                        # Validate survey numbers and Aadhaar
+                        if "survey" in k:
+                            sy_val = ExtractionValidator.validate_survey_and_subdivision(val_str, combined_text)
+                            if not sy_val["valid"] and sy_val.get("suggested_value"):
+                                v["value"] = sy_val["suggested_value"]
+                                v["needs_review"] = True
+                        elif "aadhaar" in k:
+                            v["value"] = ExtractionValidator.enforce_dpdp_masking(val_str)
+                        elif k in ["village", "taluk", "district", "town_village"]:
+                            from app.translator import format_bilingual_entity
+                            v["value"] = format_bilingual_entity(val_str)
+
+                        # Match exact key or common aliases
+                        matched_key = k if k in fields_dict else None
+                        if not matched_key:
+                            for alt in [f"{k}s", k.rstrip("s"), f"{k}_name", f"{k}_details"]:
+                                if alt in fields_dict:
+                                    matched_key = alt
+                                    break
+
+                        target_key = matched_key or k
+                        if target_key in fields_dict:
+                            fields_dict[target_key]["llm_enhanced"] = v
+                            curr_val = str(fields_dict[target_key].get("value", "")).strip()
+                            # Replace if current is "Not Detected", empty, or LLM extracted valid data
+                            if not curr_val or curr_val.lower() in ["-", "null", "none", "not detected", ""]:
+                                fields_dict[target_key]["value"] = v.get("value")
+                                fields_dict[target_key]["confidence"] = max(fields_dict[target_key].get("confidence", 0.0), v.get("confidence", 0.95))
+                                if "box_query" not in fields_dict[target_key] or not fields_dict[target_key]["box_query"]:
+                                    fields_dict[target_key]["box_query"] = v.get("value")
+                        else:
+                            fields_dict[target_key] = {
+                                "value": v.get("value"),
+                                "confidence": v.get("confidence", 0.95),
+                                "source_text": v.get("source_text", ""),
+                                "llm_enhanced": v,
+                                "box_query": v.get("value")
+                            }
 
         return {
             "status": "success",
             "model": "PaddleOCR-VL-1.6",
             "filename": filename,
+            "storage_policy": "ephemeral_memory_only (zero_disk_retention)",
             "total_pages": ocr_result["total_pages"],
             "pages": ocr_result["pages"],
             "aggregated_text": ocr_result["aggregated_text"],
@@ -229,6 +366,7 @@ async def process_document_upload(
     except Exception as e:
         logger.error(f"Error processing document: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"OCR processing failed: {str(e)}")
+
 
 @app.post("/api/export")
 async def export_data(data: dict):
@@ -259,40 +397,31 @@ async def export_data(data: dict):
         is_ec = (doc_type == "ec") or ("transactions_table" in extracted_fields)
         if is_ec:
             writer.writerow([
-                "Sr", "Doc No/Year", "Execution Date", "Presentation Date", "Registration Date",
-                "Nature", "Consideration Value", "Market Value", "PR Number",
-                "Executant(s)", "Claimant(s)", "Schedule Details"
+                "sr_no", "doc_no_year", "execution_date", "presentation_date", "registration_date",
+                "nature", "executants", "claimants", "vol_page", "consideration_value",
+                "market_value", "pr_numbers", "remarks"
             ])
             tx_obj = extracted_fields.get("transactions_table", {})
             tx_list = tx_obj.get("value", []) if isinstance(tx_obj, dict) else (tx_obj if isinstance(tx_obj, list) else [])
             for tx in tx_list:
-                exec_d = tx.get("execution_date", {}).get("standard") if isinstance(tx.get("execution_date"), dict) else tx.get("date", "-")
-                pres_d = tx.get("presentation_date", {}).get("standard") if isinstance(tx.get("presentation_date"), dict) else exec_d
-                reg_d = tx.get("registration_date", {}).get("standard") if isinstance(tx.get("registration_date"), dict) else exec_d
-
-                sch_list = tx.get("schedules", [])
-                sch_summary = ""
-                if sch_list and isinstance(sch_list, list):
-                    s0 = sch_list[0]
-                    parts = []
-                    if s0.get("extent") and s0.get("extent") != "-": parts.append(s0["extent"])
-                    if s0.get("survey_no") and s0.get("survey_no") != "-": parts.append(f"Sy:{s0['survey_no']}")
-                    if s0.get("plot_no") and s0.get("plot_no") != "-": parts.append(f"Plot:{s0['plot_no']}")
-                    sch_summary = ", ".join(parts) or s0.get("property_type", "-")
+                exec_d = tx.get("execution_date") or tx.get("date") or "-"
+                pres_d = tx.get("presentation_date") or exec_d
+                reg_d = tx.get("registration_date") or exec_d
 
                 writer.writerow([
-                    tx.get("sr", ""),
-                    tx.get("doc_no", "-"),
+                    tx.get("sr_no") or tx.get("sr") or "",
+                    tx.get("doc_no_year") or tx.get("doc_no") or "-",
                     exec_d,
                     pres_d,
                     reg_d,
                     tx.get("nature", "-"),
-                    tx.get("consideration", "-"),
-                    tx.get("market_value", "-"),
-                    tx.get("pr_number", "-"),
                     tx.get("executants", "-"),
                     tx.get("claimants", "-"),
-                    sch_summary
+                    tx.get("vol_page", "-"),
+                    tx.get("consideration_value") or tx.get("consideration") or "-",
+                    tx.get("market_value", "-"),
+                    tx.get("pr_numbers") or tx.get("pr_number") or "-",
+                    tx.get("remarks") or tx.get("document_remarks") or ""
                 ])
         else:
             writer.writerow(["Field Name", "Extracted Value", "Confidence"])
@@ -359,4 +488,3 @@ async def export_pdf(data: dict):
     except Exception as e:
         logger.error(f"PDF export failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"PDF export failed: {str(e)}")
-

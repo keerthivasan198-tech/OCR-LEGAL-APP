@@ -31,10 +31,38 @@ let state = {
 document.addEventListener("DOMContentLoaded", async () => {
     lucide.createIcons();
     await fetchCategories();
+    await checkLLMStatus();
     setupDropzone();
     // Default load sale deed sample
     await loadSampleDocument("sale_deed");
 });
+
+// Check status of local Qwen 2.5 7B LLM service
+async function checkLLMStatus() {
+    try {
+        const res = await fetch("/api/llm/status");
+        const data = await res.json();
+        const badge = document.getElementById("llm-status-badge");
+        const text = document.getElementById("llm-status-text");
+        const toggle = document.getElementById("toggle-use-llm");
+        if (data && data.llm_available) {
+            if (badge) {
+                badge.className = "hidden md:flex items-center space-x-2 px-3 py-1 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-medium";
+            }
+            if (text) text.textContent = "Qwen 2.5 7B AI Active";
+            if (toggle) toggle.checked = true;
+        } else {
+            if (badge) {
+                badge.className = "hidden md:flex items-center space-x-2 px-3 py-1 rounded-lg bg-slate-100 border border-slate-200 text-slate-600 text-xs font-medium";
+            }
+            if (text) text.textContent = "Qwen AI Offline (Rule-Engine Active)";
+            if (toggle) toggle.checked = false;
+        }
+        lucide.createIcons();
+    } catch (e) {
+        console.warn("LLM status check error:", e);
+    }
+}
 
 // Track Switching (Track 1: OCR, Track 2: Matrix, Track 3: Inheritance)
 function switchTrack(trackName) {
@@ -278,12 +306,16 @@ async function triggerProcess() {
 
     const lang = document.getElementById("ocr-lang-select").value;
     const docType = state.selectedCategoryId;
-    showLoader(true, `Running GPU OCR & Extracting Entities...`);
+    const useLlmEl = document.getElementById("toggle-use-llm");
+    const useLlm = useLlmEl ? useLlmEl.checked : true;
+
+    showLoader(true, useLlm ? `Running OCR & Qwen 2.5 7B AI Structured Extraction...` : `Running GPU OCR & Extracting Entities...`);
 
     const formData = new FormData();
     formData.append("file", state.currentFile);
     formData.append("doc_type", docType);
     formData.append("lang", lang);
+    formData.append("use_llm", useLlm ? "true" : "false");
 
     try {
         const res = await fetch("/api/ocr/process", {
@@ -599,8 +631,12 @@ function escapeHtml(str) {
 
 function sanitizeTxFinancials(tx) {
     let pr = (tx.pr_number || "-").toString().trim();
-    let cons = (tx.consideration || "-").toString().trim();
-    let mkt = (tx.market_value || "-").toString().trim();
+    let cons = (tx.consideration || (tx.consideration_norm && tx.consideration_norm.formatted) || "-").toString().trim();
+    let mkt = (tx.market_value || (tx.market_value_norm && tx.market_value_norm.formatted) || "-").toString().trim();
+
+    if (!cons || cons === "0" || cons === "null" || cons === "None") cons = "-";
+    if (!mkt || mkt === "0" || mkt === "null" || mkt === "None") mkt = "-";
+    if (!pr || pr === "0" || pr === "null" || pr === "None") pr = "-";
 
     // Check if PR number erroneously contains currency
     if (/Rs\.?|₹|\bINR\b/i.test(pr) || (/^\d{1,3}(?:,\d{2,3})+$/.test(pr) && !pr.includes('/'))) {
@@ -1253,15 +1289,40 @@ function renderStandardFieldsLayout(fields, container) {
         const confPct = Math.round(conf * 100);
         const confColor = confPct >= 85 ? "text-emerald-600 bg-emerald-50 border-emerald-200" : "text-amber-600 bg-amber-50 border-amber-200";
 
+        let llmBadge = "";
+        let evidenceHtml = "";
+        if (item.llm_enhanced) {
+            const enh = item.llm_enhanced;
+            const srcText = enh.source_text || "";
+            llmBadge = `
+                <span class="px-2 py-0.5 rounded-full text-[9px] font-bold bg-purple-100 text-purple-800 border border-purple-200 flex items-center gap-1" title="Extracted with local Qwen 2.5 7B LLM">
+                    <i data-lucide="cpu" class="w-2.5 h-2.5"></i>
+                    <span>Qwen AI</span>
+                </span>
+            `;
+            if (srcText) {
+                evidenceHtml = `
+                    <div class="mt-1.5 p-2 rounded-lg bg-purple-50/50 border border-purple-100 text-[10px] text-purple-900">
+                        <span class="font-bold text-purple-950 uppercase tracking-wider block text-[9px] mb-0.5">Ground-Truth OCR Evidence:</span>
+                        <span class="font-mono text-slate-700 italic">"${escapeHtml(srcText)}"</span>
+                    </div>
+                `;
+            }
+        }
+
         card.innerHTML = `
             <div class="flex items-center justify-between text-xs mb-1">
                 <span class="font-bold text-slate-700 flex items-center gap-1.5">
                     <span class="w-1.5 h-1.5 rounded-full bg-blue-500"></span>
                     <span>${fieldLabel}</span>
                 </span>
-                <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold border ${confColor}">${confPct}%</span>
+                <div class="flex items-center gap-1.5">
+                    ${llmBadge}
+                    <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold border ${confColor}">${confPct}%</span>
+                </div>
             </div>
             ${valueHtml}
+            ${evidenceHtml}
         `;
         container.appendChild(card);
     });

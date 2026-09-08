@@ -49,3 +49,10 @@ test_chengleput_generated.pdf
 Thumbs.db
 
 IndicTrans2/
+
+# Heavy local model weights and binaries
+models/
+bin/
+*.gguf
+*.bin
+.env

@@ -114,8 +114,11 @@ class _ECNumberedCanvas(canvas.Canvas):
         self.restoreState()
 
 
+from app.translator import transliterate_tamil_text
+
+
 def _sanitize_text_for_pdf(text: Any, default: str = "-") -> str:
-    """Sanitize strings to ensure 100% clean ASCII / Latin-1 for Helvetica in ReportLab."""
+    """Sanitize and transliterate strings to ensure 100% clean, complete ASCII / Latin-1 for ReportLab."""
     if text is None:
         return default
     s = str(text).strip()
@@ -124,6 +127,10 @@ def _sanitize_text_for_pdf(text: Any, default: str = "-") -> str:
     if s == "-":
         return "-"
     
+    # Transliterate Tamil text dynamically to English rather than deleting it
+    if any('\u0b80' <= c <= '\u0bff' for c in s):
+        s = transliterate_tamil_text(s)
+
     replacements = {
         '“': '"', '”': '"', '’': "'", '‘': "'", '`': "'", '´': "'",
         '—': ' - ', '–': ' - ', '…': '...', '\u00a0': ' ',
@@ -133,10 +140,6 @@ def _sanitize_text_for_pdf(text: Any, default: str = "-") -> str:
     for k, v in replacements.items():
         s = s.replace(k, v)
     
-    # Strip parenthetical Tamil
-    s = re.sub(r'\s*\([\u0b80-\u0bff\s\.\-—/,]+\)', '', s)
-    # Strip Tamil unicode characters
-    s = re.sub(r'[\u0b80-\u0bff]', '', s)
     # Keep Latin-1 printable characters
     s = "".join(ch for ch in s if ord(ch) <= 255)
     # Clean up empty parens
@@ -300,33 +303,33 @@ def generate_ec_extracted_report_pdf(ec_data: dict) -> bytes:
     prop_data = [
         [
             Paragraph("<b>Sub-Registrar Office (SRO)</b>", meta_label),
-            Paragraph(_sanitize_text_for_pdf(ec_data.get("sro", "Adayar")), meta_val),
+            Paragraph(_sanitize_text_for_pdf(ec_data.get("sro", "-")), meta_val),
             Paragraph("<b>Certificate Issue Date</b>", meta_label),
-            Paragraph(_sanitize_text_for_pdf(ec_data.get("issue_date", "29-Aug-2026")), meta_val),
+            Paragraph(_sanitize_text_for_pdf(ec_data.get("issue_date", "-")), meta_val),
         ],
         [
             Paragraph("<b>Village</b>", meta_label),
-            Paragraph(_sanitize_text_for_pdf(ec_data.get("village", "Adyar")), meta_val),
+            Paragraph(_sanitize_text_for_pdf(ec_data.get("village", "-")), meta_val),
             Paragraph("<b>Survey Number(s) Searched</b>", meta_label),
-            Paragraph(_sanitize_text_for_pdf(str(ec_data.get("survey_searched", "5"))), meta_val),
+            Paragraph(_sanitize_text_for_pdf(str(ec_data.get("survey_searched", "-"))), meta_val),
         ],
         [
             Paragraph("<b>Zone</b>", meta_label),
-            Paragraph(_sanitize_text_for_pdf(ec_data.get("zone", "Chennai")), meta_val),
+            Paragraph(_sanitize_text_for_pdf(ec_data.get("zone", "-")), meta_val),
             Paragraph("<b>District</b>", meta_label),
-            Paragraph(_sanitize_text_for_pdf(ec_data.get("district", "Chennai South")), meta_val),
+            Paragraph(_sanitize_text_for_pdf(ec_data.get("district", "-")), meta_val),
         ],
         [
             Paragraph("<b>Search Period Requested</b>", meta_label),
-            Paragraph(_sanitize_text_for_pdf(ec_data.get("search_period", "29-Aug-2004 to 28-Nov-2011")), meta_val),
+            Paragraph(_sanitize_text_for_pdf(ec_data.get("search_period", "-")), meta_val),
             Paragraph("<b>SRO Data Available From</b>", meta_label),
-            Paragraph(_sanitize_text_for_pdf(ec_data.get("sro_available_from", "29-Aug-2004 to 28-Nov-2011")), meta_val),
+            Paragraph(_sanitize_text_for_pdf(ec_data.get("sro_available_from", "-")), meta_val),
         ],
         [
             Paragraph("<b>Form Type</b>", meta_label),
-            Paragraph(_sanitize_text_for_pdf(ec_data.get("form_type", "Form 15 equivalent — TRANSACTIONS FOUND")), meta_val),
+            Paragraph(_sanitize_text_for_pdf(ec_data.get("form_type", "Form 15")), meta_val),
             Paragraph("<b>Total Entries Found</b>", meta_label),
-            Paragraph(_sanitize_text_for_pdf(str(ec_data.get("total_entries", "35"))), meta_val),
+            Paragraph(_sanitize_text_for_pdf(str(ec_data.get("total_entries", "0"))), meta_val),
         ],
     ]
 
@@ -345,21 +348,23 @@ def generate_ec_extracted_report_pdf(ec_data: dict) -> bytes:
     elements.append(Spacer(1, 4))
 
     # Search window advisory note
-    search_period_str = _sanitize_text_for_pdf(ec_data.get("search_period", "Aug-2004 to Nov-2011"))
-    callout_data = [[
-        Paragraph(f"<b>Search-window note:</b> Tamil Nadu title-verification practice generally recommends a minimum 30-year EC search window. This certificate's data-available range ({search_period_str}) is materially shorter than that standard, so ownership history before this window is not covered by this document and should be verified through a separate, earlier-period EC or parent title deeds.", callout_style)
-    ]]
-    callout_table = Table(callout_data, colWidths=[785])
-    callout_table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#fff1f2')),
-        ('BOX', (0, 0), (-1, -1), 0.5, colors.HexColor('#fecdd3')),
-        ('TOPPADDING', (0, 0), (-1, -1), 4),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
-        ('LEFTPADDING', (0, 0), (-1, -1), 6),
-        ('RIGHTPADDING', (0, 0), (-1, -1), 6),
-    ]))
-    elements.append(callout_table)
-    elements.append(Spacer(1, 6))
+    search_period_str = _sanitize_text_for_pdf(ec_data.get("search_period", "-"))
+    is_below_30 = ec_data.get("below_30yr_standard", True)
+    if is_below_30:
+        callout_data = [[
+            Paragraph(f"<b>Search-window note:</b> Tamil Nadu title-verification practice generally recommends a minimum 30-year EC search window. This certificate's data-available range ({search_period_str}) is shorter than that standard, so ownership history before this window is not covered by this document and should be verified through a separate, earlier-period EC or parent title deeds.", callout_style)
+        ]]
+        callout_table = Table(callout_data, colWidths=[785])
+        callout_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#fff1f2')),
+            ('BOX', (0, 0), (-1, -1), 0.5, colors.HexColor('#fecdd3')),
+            ('TOPPADDING', (0, 0), (-1, -1), 4),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+            ('LEFTPADDING', (0, 0), (-1, -1), 6),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 6),
+        ]))
+        elements.append(callout_table)
+        elements.append(Spacer(1, 6))
 
     # Section 2: Key Verification Flags
     elements.append(Paragraph("2. Key Verification Flags", sec_header_style))
@@ -367,13 +372,7 @@ def generate_ec_extracted_report_pdf(ec_data: dict) -> bytes:
 
     mortgage_flags = ec_data.get("mortgages_flags", [])
     if not mortgage_flags:
-        mortgage_flags = [
-            "[CLOSED] Doc 743/2007 (Agni Estates & Foundations Pvt Ltd -> Indian Overseas Bank, Rs. 2.90 Cr) — CLOSED by Receipt 463/2009 (18-Mar-2009).",
-            "[OPEN / UNRELEASED] Doc 958/2009 (Chennai Agni Business & Mgmt Services Pvt Ltd -> Bank of India, loan Rs. 950 lakhs) — NO closure/receipt entry found in this search window.",
-            "[OPEN / UNRELEASED] Doc 1473/2008 & 1474/2008 (N. Vimaladevi & 10 co-owners -> Standard Chartered Bank, Rs. 2 Cr & Rs. 3 Cr) — NO closure/receipt entry found in this search window.",
-            "[OPEN / UNRELEASED] Doc 1364/2009 (V. Tharshan Raj, V. Sailesh Raj, V. Ashwin Raj -> Indian Overseas Bank, Rs. 9 Cr) — NO closure/receipt entry found in this search window.",
-            "[OPEN / UNRELEASED] Doc 1427/2009 (P. Visweswara Reddy -> State Bank of India, Rs. 30 lakhs) — NO closure/receipt entry found in this search window."
-        ]
+        mortgage_flags = ["No registered mortgage or charge instruments found in this search window."]
 
     for mf in mortgage_flags:
         san_mf = _sanitize_text_for_pdf(mf)
@@ -389,17 +388,22 @@ def generate_ec_extracted_report_pdf(ec_data: dict) -> bytes:
     court_text = _sanitize_text_for_pdf(ec_data.get("court_attachments_text") or "No court attachments, decrees, or lis-pendens entries appear among the registered documents in this search window.")
     elements.append(Paragraph(court_text, flag_body))
     elements.append(Spacer(1, 2))
-    lease_text = _sanitize_text_for_pdf(ec_data.get("lease_text") or "One active lease (Doc 2309/2007, rectified by 330/2008) to ICICI Bank Ltd is recorded, term 11-Apr-2010 to 10-Apr-2013 per the rectification.")
+    lease_text = _sanitize_text_for_pdf(ec_data.get("lease_text") or "No active registered lease agreements recorded in this search window.")
     elements.append(Paragraph(lease_text, flag_body))
     elements.append(Spacer(1, 2))
-    rect_text = _sanitize_text_for_pdf(ec_data.get("rectification_text") or "Rectification deeds present: 220/2007 (rectifies 205/2007), 330/2008 (rectifies 2309/2007), 414/2013 (rectifies both 1418/2008 and 363/2010, per document remarks), and 1022/2021 (rectifies 1828/2006, per document remarks). These indicate corrections to earlier registered instruments rather than new encumbrances.")
+    rect_text = _sanitize_text_for_pdf(ec_data.get("rectification_text") or "No rectification instruments present in this search window.")
     elements.append(Paragraph(rect_text, flag_body))
+
+    sr_gaps_text = _sanitize_text_for_pdf(ec_data.get("sr_gaps_text") or "")
+    if sr_gaps_text and "GAP DETECTED" in sr_gaps_text:
+        elements.append(Spacer(1, 2))
+        elements.append(Paragraph(f"<font color='#dc2626'><b>[Source Certificate Anomaly]</b></font> {sr_gaps_text}", flag_body))
 
     # ── PAGES 2 & 3: REGISTERED ENTRIES TABLE (10 COLUMNS) ─────────────────
     elements.append(PageBreak())
 
     elements.append(Paragraph("3. Registered Entries (Form 15) — Full Detail Table", sec_header_style))
-    elements.append(Paragraph(f"All {ec_data.get('total_entries', 35)} entries returned for the search period {_sanitize_text_for_pdf(ec_data.get('search_period', '29-Aug-2004 to 28-Nov-2011'))}, SRO {_sanitize_text_for_pdf(ec_data.get('sro', 'Adayar'))}, Village {_sanitize_text_for_pdf(ec_data.get('village', 'Adyar'))}, Survey {_sanitize_text_for_pdf(ec_data.get('survey_searched', '5'))}.", sec_sub_style))
+    elements.append(Paragraph(f"All {ec_data.get('total_entries', 0)} entries returned for the search period {_sanitize_text_for_pdf(ec_data.get('search_period', '-'))}, SRO {_sanitize_text_for_pdf(ec_data.get('sro', '-'))}, Village {_sanitize_text_for_pdf(ec_data.get('village', '-'))}, Survey {_sanitize_text_for_pdf(ec_data.get('survey_searched', '-'))}.", sec_sub_style))
 
     # 10 Columns total width: 786pt
     # [Sr(22), Doc(54), Date(58), Nature(85), Execs(125), Claims(115), Cons(72), Mkt(72), PR(53), Schedule(130)]
@@ -415,7 +419,7 @@ def generate_ec_extracted_report_pdf(ec_data: dict) -> bytes:
         Paragraph("<b>Consideration Value</b>", th_style),
         Paragraph("<b>Market Value</b>", th_style),
         Paragraph("<b>PR Number</b>", th_style),
-        Paragraph("<b>Schedule Details</b>", th_style),
+        Paragraph("<b>Remarks / Schedule</b>", th_style),
     ]]
 
     entries = ec_data.get("transactions", [])
@@ -470,18 +474,18 @@ def generate_ec_extracted_report_pdf(ec_data: dict) -> bytes:
                 raw_pr = "-"
             pr_val = _sanitize_text_for_pdf(raw_pr)
 
-            # 10. Schedule Details (Architecture: 1-by-1 explicit mapping)
+            # 10. Remarks / Schedule Details
             sch_list = row.get("schedules", [])
-            sch_summary = "-"
+            rem_str = row.get("remarks") or row.get("document_remarks") or ""
+            sch_parts = []
+            if rem_str and rem_str != "-":
+                sch_parts.append(rem_str)
             if sch_list and isinstance(sch_list, list) and len(sch_list) > 0:
                 s0 = sch_list[0]
-                parts = []
-                if s0.get("extent") and s0.get("extent") != "-": parts.append(s0["extent"])
-                if s0.get("survey_no") and s0.get("survey_no") != "-": parts.append(f"Sy:{s0['survey_no']}")
-                if s0.get("plot_no") and s0.get("plot_no") != "-": parts.append(f"Plot:{s0['plot_no']}")
-                if s0.get("door_no") and s0.get("door_no") != "-": parts.append(f"Door:{s0['door_no']}")
-                sch_summary = ", ".join(parts) or s0.get("property_type", "-")
-            sch_val = _sanitize_text_for_pdf(sch_summary)
+                if s0.get("extent") and s0.get("extent") != "-": sch_parts.append(s0["extent"])
+                if s0.get("survey_no") and s0.get("survey_no") != "-": sch_parts.append(f"Sy:{s0['survey_no']}")
+                if s0.get("plot_no") and s0.get("plot_no") != "-": sch_parts.append(f"Plot:{s0['plot_no']}")
+            sch_val = _sanitize_text_for_pdf(" | ".join(sch_parts) if sch_parts else "-")
 
             t_rows.append([
                 Paragraph(str(sr_num), td_style),
@@ -518,7 +522,7 @@ def generate_ec_extracted_report_pdf(ec_data: dict) -> bytes:
     elements.append(Paragraph("4. Caveats — What This EC Does NOT Cover", sec_header_style))
     elements.append(Spacer(1, 4))
 
-    sro_name = _sanitize_text_for_pdf(ec_data.get("sro", "Adayar"))
+    sro_name = _sanitize_text_for_pdf(ec_data.get("sro", "-"))
     caveats = [
         f"* <b>This certificate reflects only registered documents</b> presented at the {sro_name} SRO within the stated search window. It is not proof of current, unencumbered ownership on its own.",
         "* <b>Unregistered agreements</b> (e.g. unregistered sale agreements, unregistered leases below the registration threshold, informal family arrangements) will not appear here.",
@@ -534,7 +538,7 @@ def generate_ec_extracted_report_pdf(ec_data: dict) -> bytes:
 
     elements.append(Spacer(1, 10))
     elements.append(Paragraph(
-        f"Source: Government of Tamil Nadu Registration Department, Certificate of Encumbrance on Property, SRO {sro_name}, issued {_sanitize_text_for_pdf(ec_data.get('issue_date', '29-Aug-2026'))}.<br/>"
+        f"Source: Government of Tamil Nadu Registration Department, Certificate of Encumbrance on Property, SRO {sro_name}, issued {_sanitize_text_for_pdf(ec_data.get('issue_date', '-'))}.<br/>"
         "Extracted and structured for review purposes; refer to the original certificate for the authoritative record and digital signature validity.",
         footer_p
     ))
@@ -557,16 +561,16 @@ def _prepare_ec_report_data(data: dict, fields: dict, ext: dict) -> dict:
         m = re.match(r'^([^\(]+)', str(s))
         return m.group(1).strip() if m else str(s).strip()
 
-    sro = _en_only(_val("sro_office", "Adayar"))
-    issue_date = _val("certificate_date", "29-Aug-2026")
-    village = _en_only(_val("village", "Adyar"))
-    survey_searched = _val("survey_searched", "5")
-    zone = _en_only(_val("zone", "Chennai"))
-    district = _en_only(_val("district", "Chennai South"))
-    search_period = _val("search_period", "29-Aug-2004 to 28-Nov-2011")
+    sro = _en_only(_val("sro_office", "-"))
+    issue_date = _val("certificate_date", "-")
+    village = _en_only(_val("village", "-"))
+    survey_searched = _val("survey_searched", "-")
+    zone = _en_only(_val("zone", "-"))
+    district = _en_only(_val("district", "-"))
+    search_period = _val("search_period", "-")
     sro_available = _val("sro_available_from", search_period)
     
-    form_type = _en_only(_val("form_type", "Form 15 equivalent — TRANSACTIONS FOUND"))
+    form_type = _en_only(_val("form_type", "Form 15"))
     
     tx_list = fields.get("transactions_table", {}).get("value", [])
     if not isinstance(tx_list, list):
@@ -578,6 +582,10 @@ def _prepare_ec_report_data(data: dict, fields: dict, ext: dict) -> dict:
     court_text = verif.get("court_attachments_text") or _val("court_attachments", f"No court attachments, decrees, or lis-pendens entries appear among the {total_entries} registered documents in this search window.")
     lease_text = verif.get("lease_text") or _val("lease_status", "No active registered lease agreements recorded in this search window.")
     rect_text = verif.get("rectification_text") or _val("rectification_deeds", "No rectification instruments present in this search window.")
+    sr_gaps_text = verif.get("sr_gaps_text") or _val("sr_no_gaps", "")
+
+    below_30yr = ext.get("below_30yr_standard") if "below_30yr_standard" in ext else fields.get("below_30yr_standard", True)
+    search_years = ext.get("search_window_years") or fields.get("search_window_years", 0)
 
     return {
         "sro": sro,
@@ -588,12 +596,15 @@ def _prepare_ec_report_data(data: dict, fields: dict, ext: dict) -> dict:
         "district": district,
         "search_period": search_period,
         "sro_available_from": sro_available,
+        "below_30yr_standard": below_30yr,
+        "search_window_years": search_years,
         "form_type": form_type,
         "total_entries": total_entries,
         "mortgages_flags": mortgage_flags,
         "court_attachments_text": court_text,
         "lease_text": lease_text,
         "rectification_text": rect_text,
+        "sr_gaps_text": sr_gaps_text,
         "transactions": tx_list
     }
 
