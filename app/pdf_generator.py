@@ -30,6 +30,7 @@ def _get_registered_fonts():
     font_candidates = [
         (r"C:\Windows\Fonts\latha.ttf", r"C:\Windows\Fonts\lathab.ttf", "Latha", "Latha-Bold"),
         (r"C:\Windows\Fonts\vijaya.ttf", r"C:\Windows\Fonts\vijayab.ttf", "Vijaya", "Vijaya-Bold"),
+        (r"C:\Windows\Fonts\ARIALUNI.TTF", r"C:\Windows\Fonts\ARIALUNI.TTF", "ArialUnicode", "ArialUnicode-Bold"),
     ]
 
     for reg_path, bold_path, f_reg, f_bld in font_candidates:
@@ -107,7 +108,8 @@ class _ECNumberedCanvas(canvas.Canvas):
 
     def draw_footer(self, page_count):
         self.saveState()
-        self.setFont("Helvetica", 7.5)
+        font_name, _ = _get_registered_fonts()
+        self.setFont(font_name, 7.5)
         self.setFillColor(colors.HexColor('#64748b'))
         # Only print subtle page number on pages 2, 3, 4
         if self._pageNumber > 1:
@@ -120,6 +122,7 @@ def generate_ec_extracted_report_pdf(ec_data: dict) -> bytes:
     Generate authoritative, 4-page publication-ready Encumbrance Certificate Extracted Report
     matching the exact structure, typography, tables, and precision of TNREGINET standards.
     """
+    font_name, font_bold = _get_registered_fonts()
     buffer = io.BytesIO()
     
     # A4 margins 36pt (width 595.28 - 72 = 523.28pt printable)
@@ -137,7 +140,7 @@ def generate_ec_extracted_report_pdf(ec_data: dict) -> bytes:
     # Custom typography styles matching the target PDF exactly
     title_style = ParagraphStyle(
         'ECTitle',
-        fontName='Helvetica-Bold',
+        fontName=font_bold,
         fontSize=15,
         leading=19,
         textColor=colors.HexColor('#0f172a'),
@@ -146,7 +149,7 @@ def generate_ec_extracted_report_pdf(ec_data: dict) -> bytes:
 
     subtitle_style = ParagraphStyle(
         'ECSubtitle',
-        fontName='Helvetica',
+        fontName=font_name,
         fontSize=8.5,
         leading=11,
         textColor=colors.HexColor('#475569'),
@@ -155,7 +158,7 @@ def generate_ec_extracted_report_pdf(ec_data: dict) -> bytes:
 
     sec_header_style = ParagraphStyle(
         'ECSecHeader',
-        fontName='Helvetica-Bold',
+        fontName=font_bold,
         fontSize=11,
         leading=15,
         textColor=colors.HexColor('#0f172a'),
@@ -165,7 +168,7 @@ def generate_ec_extracted_report_pdf(ec_data: dict) -> bytes:
 
     sec_sub_style = ParagraphStyle(
         'ECSecSub',
-        fontName='Helvetica',
+        fontName=font_name,
         fontSize=8,
         leading=11,
         textColor=colors.HexColor('#475569'),
@@ -174,7 +177,7 @@ def generate_ec_extracted_report_pdf(ec_data: dict) -> bytes:
 
     meta_label = ParagraphStyle(
         'ECMetaLabel',
-        fontName='Helvetica-Bold',
+        fontName=font_bold,
         fontSize=8,
         leading=10,
         textColor=colors.HexColor('#0f172a')
@@ -182,7 +185,7 @@ def generate_ec_extracted_report_pdf(ec_data: dict) -> bytes:
 
     meta_val = ParagraphStyle(
         'ECMetaVal',
-        fontName='Helvetica',
+        fontName=font_name,
         fontSize=8,
         leading=10.5,
         textColor=colors.HexColor('#1e293b')
@@ -190,7 +193,7 @@ def generate_ec_extracted_report_pdf(ec_data: dict) -> bytes:
 
     callout_style = ParagraphStyle(
         'ECCallout',
-        fontName='Helvetica',
+        fontName=font_name,
         fontSize=8,
         leading=11,
         textColor=colors.HexColor('#991b1b')
@@ -198,7 +201,7 @@ def generate_ec_extracted_report_pdf(ec_data: dict) -> bytes:
 
     flag_body = ParagraphStyle(
         'ECFlagBody',
-        fontName='Helvetica',
+        fontName=font_name,
         fontSize=8,
         leading=11.5,
         textColor=colors.HexColor('#1e293b'),
@@ -207,7 +210,7 @@ def generate_ec_extracted_report_pdf(ec_data: dict) -> bytes:
 
     th_style = ParagraphStyle(
         'ECTableH',
-        fontName='Helvetica-Bold',
+        fontName=font_bold,
         fontSize=7.5,
         leading=9.5,
         textColor=colors.white
@@ -215,7 +218,7 @@ def generate_ec_extracted_report_pdf(ec_data: dict) -> bytes:
 
     td_style = ParagraphStyle(
         'ECTableD',
-        fontName='Helvetica',
+        fontName=font_name,
         fontSize=7.5,
         leading=9.5,
         textColor=colors.HexColor('#0f172a')
@@ -223,7 +226,7 @@ def generate_ec_extracted_report_pdf(ec_data: dict) -> bytes:
 
     td_bold = ParagraphStyle(
         'ECTableDBold',
-        fontName='Helvetica-Bold',
+        fontName=font_bold,
         fontSize=7.5,
         leading=9.5,
         textColor=colors.HexColor('#0f172a')
@@ -231,7 +234,7 @@ def generate_ec_extracted_report_pdf(ec_data: dict) -> bytes:
 
     td_note = ParagraphStyle(
         'ECTableDNote',
-        fontName='Helvetica-Oblique',
+        fontName=font_name,  # Fallback from Helvetica-Oblique
         fontSize=6.8,
         leading=8.5,
         textColor=colors.HexColor('#64748b')
@@ -239,7 +242,7 @@ def generate_ec_extracted_report_pdf(ec_data: dict) -> bytes:
 
     caveat_p = ParagraphStyle(
         'ECCaveatP',
-        fontName='Helvetica',
+        fontName=font_name,
         fontSize=8,
         leading=11.5,
         textColor=colors.HexColor('#1e293b'),
@@ -248,7 +251,7 @@ def generate_ec_extracted_report_pdf(ec_data: dict) -> bytes:
 
     footer_p = ParagraphStyle(
         'ECFooterP',
-        fontName='Helvetica',
+        fontName=font_name,
         fontSize=7.5,
         leading=10,
         textColor=colors.HexColor('#64748b'),
@@ -450,6 +453,24 @@ def generate_ec_extracted_report_pdf(ec_data: dict) -> bytes:
         footer_p
     ))
 
+    # ── PAGE 5: RAW OCR TEXT ─────────────────────────────────────────────
+    full_text = ec_data.get("full_text")
+    if full_text and full_text != "No OCR text extracted.":
+        elements.append(PageBreak())
+        elements.append(Paragraph("5. Raw OCR Text", sec_header_style))
+        elements.append(Spacer(1, 4))
+        
+        raw_text_style = ParagraphStyle(
+            'RawText',
+            fontName=font_name,
+            fontSize=8,
+            leading=10,
+            textColor=colors.HexColor('#334155')
+        )
+        # Using simplehtml escaping and br tags
+        clean_text = str(full_text).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\n", "<br/>")
+        elements.append(Paragraph(clean_text, raw_text_style))
+
     doc.build(elements, canvasmaker=_ECNumberedCanvas)
     return buffer.getvalue()
 
@@ -505,26 +526,21 @@ def _prepare_ec_report_data(data: dict, fields: dict, ext: dict) -> dict:
         "court_attachments_text": court_text,
         "lease_text": lease_text,
         "rectification_text": rect_text,
-        "transactions": tx_list
+        "transactions": tx_list,
+        "full_text": ext.get("full_text", "No OCR text extracted.")
     }
 
 
 def generate_ocr_pdf_report(data: Dict[str, Any]) -> bytes:
     """
     Generate a full-fidelity PDF report of the OCR extraction results.
-    If the document is an Encumbrance Certificate (EC), routes to the specialized 4-page report.
     Returns bytes of the compiled PDF.
     """
     ext = data.get("extraction", {})
     fields = ext.get("fields", {}) or data.get("fields", {})
     doc_type = data.get("doc_type") or ext.get("document_type_id")
 
-    # Detect Encumbrance Certificate
-    if doc_type == "ec" or "form_type" in fields or "encumbrance_status" in fields or "transactions_table" in fields:
-        ec_data = _prepare_ec_report_data(data, fields, ext)
-        return generate_ec_extracted_report_pdf(ec_data)
-
-    # Generic report for other 9 document types (Sale Deed, Patta, Parent Deed, etc.)
+    # Generic report for all document types (matches UI tabs)
     buffer = io.BytesIO()
     font_name, font_bold = _get_registered_fonts()
 
@@ -743,6 +759,67 @@ def generate_ocr_pdf_report(data: Dict[str, Any]) -> bytes:
             ('RIGHTPADDING', (0, 0), (-1, -1), 6),
         ]))
         elements.append(chk_table)
+        elements.append(Spacer(1, 14))
+
+    # 5. Transactions Table (if any)
+    tx_table_data = fields.get("transactions_table", {}).get("value", [])
+    if isinstance(tx_table_data, list) and len(tx_table_data) > 0:
+        elements.append(KeepTogether([
+            Paragraph("3. Registered Transactions", section_header_style),
+            Spacer(1, 4)
+        ]))
+        
+        t_widths = [30, 80, 80, 100, 100, 133] # 523 total
+        t_rows = [[
+            Paragraph("<b>Sr.</b>", meta_label_style),
+            Paragraph("<b>Doc No</b>", meta_label_style),
+            Paragraph("<b>Date</b>", meta_label_style),
+            Paragraph("<b>Nature</b>", meta_label_style),
+            Paragraph("<b>Executants</b>", meta_label_style),
+            Paragraph("<b>Claimants</b>", meta_label_style),
+        ]]
+        
+        for idx, row in enumerate(tx_table_data):
+            sr_num = row.get("sr") or (idx + 1)
+            t_rows.append([
+                Paragraph(str(sr_num), field_val_style),
+                Paragraph(str(row.get("doc_no", "-")), field_val_style),
+                Paragraph(str(row.get("date", "-")), field_val_style),
+                Paragraph(str(row.get("nature", "-")).replace("\n", "<br/>"), field_val_style),
+                Paragraph(str(row.get("executants") or row.get("parties") or "-").replace("\n", "<br/>"), field_val_style),
+                Paragraph(str(row.get("claimants") or "-").replace("\n", "<br/>"), field_val_style),
+            ])
+            
+        entries_table = Table(t_rows, colWidths=t_widths, repeatRows=1)
+        entries_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f1f5f9')),
+            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#cbd5e1')),
+            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#fcfdfe')]),
+            ('TOPPADDING', (0, 0), (-1, -1), 5),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+            ('LEFTPADDING', (0, 0), (-1, -1), 6),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 6),
+        ]))
+        elements.append(entries_table)
+        elements.append(Spacer(1, 14))
+
+    # 6. Raw OCR Text
+    full_text = ext.get("full_text")
+    if full_text:
+        elements.append(PageBreak())
+        elements.append(Paragraph("Raw OCR Text", section_header_style))
+        elements.append(Spacer(1, 4))
+        
+        raw_text_style = ParagraphStyle(
+            'RawText',
+            fontName=font_name,
+            fontSize=8,
+            leading=10,
+            textColor=colors.HexColor('#334155')
+        )
+        clean_text = str(full_text).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\n", "<br/>")
+        elements.append(Paragraph(clean_text, raw_text_style))
 
     doc.build(elements, canvasmaker=_NumberedCanvas)
     return buffer.getvalue()

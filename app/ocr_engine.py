@@ -559,16 +559,35 @@ class OCREngine:
             for idx in range(num_pages):
                 page = pdf[idx]
                 width_pt, height_pt = page.get_size()
+                tp = page.get_textpage()
+                native_lines = self._extract_native_pdf_lines(tp, width_pt, height_pt)
 
-                # Render high-resolution page image for PaddleOCR-VL-1.6
                 scale = 2.0
                 bitmap = page.render(scale=scale)
                 pil_image = bitmap.to_pil()
+                preview_url = self.image_to_base64(pil_image)
 
-                # Process through PaddleOCR-VL-1.6 vision pipeline
-                page_res = self.process_image(pil_image, lang=lang)
-                page_res["page_number"] = idx + 1
-                page_res["preview_url"] = self.image_to_base64(pil_image)
+                if native_lines:
+                    logger.info(f"Page {idx + 1}: extracted {len(native_lines)} lines using native PDF text extraction.")
+                    all_words = []
+                    for line in native_lines:
+                        if "words" in line:
+                            all_words.extend(line["words"])
+                    full_text = "\n".join([l["text"] for l in native_lines])
+                    page_res = {
+                        "width": width_pt,
+                        "height": height_pt,
+                        "lines": native_lines,
+                        "words": all_words,
+                        "full_text": full_text,
+                        "preview_url": preview_url,
+                        "page_number": idx + 1,
+                    }
+                else:
+                    logger.info(f"Page {idx + 1}: no native text found, falling back to PaddleOCR.")
+                    page_res = self.process_image(pil_image, lang=lang)
+                    page_res["page_number"] = idx + 1
+                    page_res["preview_url"] = preview_url
 
                 pages.append(page_res)
                 if page_res.get("full_text"):

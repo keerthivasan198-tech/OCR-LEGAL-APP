@@ -191,7 +191,10 @@ class DocumentExtractor:
         if any(k in t for k in ["parent doc", "mother document", "chain of title", "முந்தைய ஆவணம்", "தாய் பத்திரம்", "prior deed"]):
             scores["parent_docs"] += 7
 
-        if any(k in t for k in ["encumbrance certificate", "வில்லங்கச் சான்றிதழ்", "form no. 15", "form no. 16", "nil encumbrance"]):
+        if any(k in t for k in ["encumbrance certificate", "வில்லங்கச் சான்றிதழ்", "form no. 15", "form no. 16", "nil encumbrance",
+                                 "வில்லங்கம்", "search period", "தேடுதல் காலம்", "தேடல் காலம்",
+                                 "sl. no.", "doc. no.", "nature of encumbrance", "executant", "claimant",
+                                 "வில்லங்கச்", "tnreginet", "encumbrance", "registered transactions"]):
             scores["ec"] += 8
 
         if any(k in t for k in ["planning permit", "building sanction", "plinth area", "fsi", "setback", "கட்டிட வரைபடம்"]):

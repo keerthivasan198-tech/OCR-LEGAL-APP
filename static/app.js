@@ -22,7 +22,7 @@ let state = {
     currentResult: null,
     currentPageIndex: 0,
     zoomLevel: 1.0,
-    showBBoxes: true,
+    showBBoxes: false,
     activeTab: "fields",
     currentBundle: null
 };
@@ -432,6 +432,8 @@ function renderAllDocumentPages(pages, extraction) {
             const bboxOverlay = document.createElement("div");
             bboxOverlay.className = "pdf-page-bbox-layer bbox-overlay-page";
             bboxOverlay.id = `bbox-layer-${pIdx}`;
+            // Respect the current showBBoxes state (default: off so original document is clean)
+            bboxOverlay.style.display = state.showBBoxes ? "block" : "none";
 
             // 1. Render Field Bounding Boxes belonging to THIS page
             Object.entries(fields).forEach(([key, item]) => {
@@ -1570,6 +1572,15 @@ function toggleBBoxes() {
     bboxLayers.forEach(layer => {
         layer.style.display = state.showBBoxes ? "block" : "none";
     });
+    // Update button appearance to reflect ON/OFF state
+    const btn = document.getElementById("btn-toggle-bbox");
+    if (btn) {
+        if (state.showBBoxes) {
+            btn.className = "px-2 py-1 rounded bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 font-medium text-[11px] flex items-center gap-1";
+        } else {
+            btn.className = "px-2 py-1 rounded bg-slate-100 text-slate-600 border border-slate-200 hover:bg-slate-200 font-medium text-[11px] flex items-center gap-1";
+        }
+    }
 }
 
 function searchInDocument(query) {

@@ -62,7 +62,7 @@ class ECExtractor:
         return re.sub(r'^[/:\-\s]+|[/:\-\s]+$', '', val).strip()
 
     def _clean_party_name(self, raw_name: str) -> str:
-        """Dynamically resolve party name into clean Latin characters with bilingual awareness."""
+        """Dynamically clean party names while preserving original document text."""
         if not raw_name:
             return ""
 
@@ -94,49 +94,15 @@ class ECExtractor:
         p_str = re.sub(r'^\d+\.\s*', '', p_str)
         p_str = re.sub(r'\b\d+\b\s*$', '', p_str).strip()
 
-        # Check if English in parentheses e.g. 'தாரா குலிசா (Tara Gulecha)'
-        m_en = re.search(r'\(([A-Za-z0-9\s,\.\&\'\-]+)\)', p_str)
-        if m_en:
-            cand = m_en.group(1).strip()
-            if not any(k in cand.lower() for k in ["principal", "agent", "lessor", "lessee", "பிரின்ஸ்பால்", "e &", "e&"]):
-                ta_part = re.sub(r'\s*\([^\)]+\)', '', p_str).strip()
-                cand = re.sub(r'^(?:1|2|3|4|5|6|7|8|9|10)\.\s*', '', cand).strip()
-                if ta_part and any('\u0b80' <= c <= '\u0bff' for c in ta_part):
-                    return f"{cand} ({ta_part}){role}"
-                return cand + role
-
-        # Pure Tamil or mixed
-        clean = re.sub(r'\s*\([^\)]+\)', '', p_str).strip()
-        clean = re.sub(r'\.\.+', '.', clean).strip()
+        # Clean up punctuation
+        clean = re.sub(r'\.\.+', '.', p_str).strip()
         clean = re.sub(r'\s*-\s*$', '', clean).strip()
         clean = re.sub(r'^[\s,\.\-]+|[\s,\.\-]+$', '', clean).strip()
 
         if not clean or len(clean) < 2:
             return ""
 
-        if not any('\u0b80' <= c <= '\u0bff' for c in clean):
-            return clean + role
-
-        parts = clean.split()
-        en_parts = []
-        ta_parts = []
-        for p in parts:
-            if re.match(r'^[A-Za-z]\.?$', p):
-                en_parts.append(p.upper())
-                ta_parts.append(p.upper())
-            elif p.lower() in self.KNOWN_ENTITIES:
-                en_parts.append(self.KNOWN_ENTITIES[p.lower()])
-                ta_parts.append(p)
-            elif any('\u0b80' <= c <= '\u0bff' for c in p):
-                en_parts.append(dynamic_transliterate_tamil(p))
-                ta_parts.append(p)
-            else:
-                en_parts.append(p)
-                ta_parts.append(p)
-
-        en_str = " ".join(en_parts).title()
-        ta_str = " ".join(ta_parts)
-        return f"{en_str} ({ta_str}){role}"
+        return clean + role
 
     def _extract_transactions_table(self, text: str) -> List[Dict[str, Any]]:
         """
@@ -328,7 +294,63 @@ class ECExtractor:
                         "consideration": c_val
                     })
 
+        # Strategy 3: TNREGINET real-document inline table scan (final fallback)
+        if not parsed_entries:
+            parsed_entries = self._extract_tnreginet_inline(text)
+
         return parsed_entries
+
+    def _extract_tnreginet_inline(self, text: str) -> List[Dict[str, Any]]:
+        """
+        Strategy 3: TNREGINET EC inline scanner.
+        Catches 'NNNN/YYYY  dd-Mon-yyyy  <nature text>' rows from real TNREGINET EC PDFs.
+        """
+        entries = []
+        rows = list(re.finditer(
+            r'(\d{1,6}/\d{4})\s+(\d{1,2}[-./]\w{3,9}[-./]\d{4}|\d{1,2}[-./]\d{1,2}[-./]\d{2,4})\s+(.{5,120})',
+            text
+        ))
+        for idx, m in enumerate(rows):
+            doc_num = m.group(1).strip()
+            doc_dt = m.group(2).strip()
+            rest = m.group(3).strip()
+            rest_low = rest.lower()
+
+            if any(k in rest_low for k in ['sale', 'conveyance', 'கிரைய']):
+                nature = 'Conveyance / Sale Deed (கிரையப் பத்திரம்)'
+            elif any(k in rest_low for k in ['mortgage', 'modt', 'deposit of title', 'அடமான']):
+                nature = 'MODT / Deposit of Title Deeds (அடமான ஆவணம்)'
+            elif any(k in rest_low for k in ['receipt', 'discharge', 'ரசீது']):
+                nature = 'Receipt / Mortgage Discharge (ரசீது / அடமான விடுதலை)'
+            elif any(k in rest_low for k in ['settlement', 'தான']):
+                nature = 'Settlement Deed (தான செட்டில்மெண்ட்)'
+            elif any(k in rest_low for k in ['lease', 'குத்தகை']):
+                nature = 'Lease Deed (குத்தகை ஆவணம்)'
+            elif any(k in rest_low for k in ['partition', 'பாகப்பிரிவினை']):
+                nature = 'Partition Deed (பாகப்பிரிவினை பத்திரம்)'
+            elif any(k in rest_low for k in ['rectification', 'பிழைதிருத்தல்']):
+                nature = 'Rectification Deed (பிழைதிருத்தல் பத்திரம்)'
+            else:
+                nature = 'Registered Deed (பதிவு செய்யப்பட்ட ஆவணம்)'
+
+            cons_val = '-'
+            m_amt = re.search(r'(?:Rs\.?|ரூ\.?|INR|₹)\s*([0-9,]+)', rest)
+            if m_amt:
+                cons_val = 'Rs. ' + m_amt.group(1)
+
+            entries.append({
+                "sr": idx + 1,
+                "doc_no": doc_num,
+                "date": doc_dt,
+                "nature": nature,
+                "nature_note": "",
+                "executants": "-",
+                "claimants": "-",
+                "consideration": cons_val
+            })
+        return entries
+
+
 
     def extract(self, text: str) -> Dict[str, Any]:
         """
@@ -342,8 +364,12 @@ class ECExtractor:
         sro_m = re.search(r'S\.?R\.?O\s*(?:/சா\.ப\.அ)?\s*(?:Office)?\s*[:\s]+(?:Sub-Registrar\s*Office\s*)?([A-Za-z\u0b80-\u0bff\s]+?)(?:,\s*[A-Za-z\s]+|\s+Date|\s+நாள்|\s+District|\s+Zone|\n)', text, re.IGNORECASE)
         sro_raw = self._clean_field_val(sro_m.group(1)) if sro_m else ""
         if not sro_raw:
-            sro_m2 = re.search(r'(?:Sub\s*Registrar\s*Office|பதிவாளர்\s*அலுவலகம்)[^\n:]*[:\s]+([A-Za-z\u0b80-\u0bff\s]+?)(?:,\s*[A-Za-z\s]+|\s+Date|\n)', text, re.IGNORECASE)
-            sro_raw = self._clean_field_val(sro_m2.group(1)) if sro_m2 else "Adayar"
+            sro_m2 = re.search(r'(?:Sub\s*Registrar\s*Office|பதிவாளர்\s*அலுவலகம்|சார்பதிவாளர்\s*அலுவலகம்)[^\n:]*[:\s]+([A-Za-z\u0b80-\u0bff\s]+?)(?:,\s*[A-Za-z\s]+|\s+Date|\n)', text, re.IGNORECASE)
+            sro_raw = self._clean_field_val(sro_m2.group(1)) if sro_m2 else ""
+        if not sro_raw:
+            # TNREGINET format: "Zone : Chennai  District : Chennai South  S.R.O : Adayar"
+            sro_inline = re.search(r'S\.?R\.?O\s*[:\-]\s*([A-Za-z\u0b80-\u0bff][A-Za-z\u0b80-\u0bff\s]{1,40}?)(?:\s*\n|\s{2,}|$)', text, re.IGNORECASE)
+            sro_raw = self._clean_field_val(sro_inline.group(1)) if sro_inline else ""
 
         sro_bilingual = format_bilingual_entity(sro_raw)
         fields["sro_office"] = {
@@ -371,7 +397,11 @@ class ECExtractor:
         village_raw = self._clean_field_val(vil_m.group(1)) if vil_m else ""
         if not village_raw:
             vil_m2 = re.search(r'Village\s*&\s*Street[^\n:]*[:\s]+([A-Za-z\u0b80-\u0bff\s,]+?)(?:\s+Survey|\n)', text, re.IGNORECASE)
-            village_raw = self._clean_field_val(vil_m2.group(1)) if vil_m2 else "Adyar"
+            village_raw = self._clean_field_val(vil_m2.group(1)) if vil_m2 else ""
+        if not village_raw:
+            # Tamil: கிராமம் / கிராமம்:
+            vil_ta = re.search(r'(?:கிராமம்|Village)\s*[/:\s]+([A-Za-z\u0b80-\u0bff][A-Za-z\u0b80-\u0bff\s]{1,40}?)(?:\s*\n|\s{2,}|\|)', text, re.IGNORECASE)
+            village_raw = self._clean_field_val(vil_ta.group(1)) if vil_ta else ""
         village_raw = re.sub(r'\s*(?:Survey|Street|Survey Details).*$', '', village_raw, flags=re.IGNORECASE).strip()
 
         village_bilingual = format_bilingual_entity(village_raw)
@@ -386,7 +416,11 @@ class ECExtractor:
 
         # Searched Survey Number(s)
         surv_m = re.search(r'(?:Survey\s*Details\s*(?:/\s*சர்வே\s*விவரம்)?|T\.?S\.?\s*No\.?)\s*[:\s]+([0-9A-Za-z/,\s\-PART]+?)(?:\n|Data|\||\Z)', text, re.IGNORECASE)
-        survey_searched = self._clean_field_val(surv_m.group(1)) if surv_m else "5"
+        survey_searched = self._clean_field_val(surv_m.group(1)) if surv_m else ""
+        if not survey_searched:
+            # Tamil: சர்வே எண் / புல எண்
+            surv_ta = re.search(r'(?:சர்வே\s*எண்|புல\s*எண்|Survey\s*No)\s*[.:\s]+([0-9A-Za-z/,\s\-PART]+?)(?:\n|\||\Z)', text, re.IGNORECASE)
+            survey_searched = self._clean_field_val(surv_ta.group(1)) if surv_ta else ""
         fields["survey_searched"] = {
             "value": survey_searched,
             "confidence": 0.98 if surv_m else 0.0,
@@ -463,7 +497,17 @@ class ECExtractor:
             search_period = self._clean_field_val(sp_m.group(1))
             search_period = re.sub(r'(\d{4})\s*[-–]\s*(\d{1,2})', r'\1 to \2', search_period)
         else:
-            search_period = "29-Aug-2004 to 28-Nov-2011"
+            # Tamil: தேடுதல் காலம் or period with date range
+            sp_ta = re.search(r'(?:தேடுதல்\s*காலம்|தேடல்\s*காலம்)[^\n:]*[:\s]+([^\n\(\)]+)', text, re.IGNORECASE)
+            if sp_ta:
+                search_period = self._clean_field_val(sp_ta.group(1))
+            else:
+                # Try to detect date range patterns: dd-Mon-yyyy To dd-Mon-yyyy
+                sp_date = re.search(r'(\d{1,2}[-./]\w+[-./]\d{4})\s*(?:To|to|-|–)\s*(\d{1,2}[-./]\w+[-./]\d{4})', text)
+                if sp_date:
+                    search_period = f"{sp_date.group(1)} to {sp_date.group(2)}"
+                else:
+                    search_period = ""
 
         fields["search_period"] = {
             "value": search_period,
