@@ -46,33 +46,61 @@ Supports automated extraction, parsing, and structured verification across 11 ke
 
 ---
 
-## 🚀 Quick Start
+## 🚀 Easy Installation & Setup Guide
 
-### 1. Clone the Repository
-`ash
+### Step 1: Open PowerShell
+Open PowerShell.
+
+### Step 2: Clone the Repository
+```powershell
 git clone https://github.com/keerthivasan198-tech/OCR-LEGAL-APP.git
 cd OCR-LEGAL-APP
-`
+```
 
-### 2. Create and Activate Virtual Environment
-`ash
+### Step 3: Create Virtual Environment
+```powershell
 python -m venv .venv
-# On Windows:
-.venv\Scriptsctivate
-# On Linux/macOS:
-source .venv/bin/activate
-`
+.venv\Scripts\activate
+```
 
-### 3. Install Dependencies
-`ash
+### Step 4: Install Dependencies
+```powershell
+python -m pip install --upgrade pip
 pip install -r requirements.txt
-`
+```
 
-### 4. Run the Application
-`ash
+### Step 5: Fix Hugging Face Download
+```powershell
+$env:HF_HUB_DISABLE_XET="1"
+```
+
+### Step 6: Download Qwen Model & llama.cpp
+```powershell
+python setup_qwen_service.py
+```
+
+### Step 7: Start Qwen AI Service
+```powershell
+.\start_llama_server.bat
+```
+
+### Step 8: Open a New PowerShell
+```powershell
+cd OCR-LEGAL-APP
+.venv\Scripts\activate
+```
+
+### Step 9: Start Web Application
+```powershell
 python run.py
-`
-Open your browser and navigate to: http://localhost:8000
+```
+
+### Step 10: Open Browser
+http://localhost:8000
+
+1. Select your document type (e.g., Patta document or Sale deed).
+2. Upload any PDF or scanned image (or click Load Sample for instant demonstration).
+3. Click Run GPU OCR to view bounding boxes, full OCR text, extracted entities, and legal checklists!
 
 ---
 
