@@ -1327,16 +1327,16 @@ function renderTableTab(extraction) {
 
             return `
             <tr class="hover:bg-slate-50/80 transition-colors">
-                <td class="p-2.5 text-center text-slate-500 font-mono text-xs">${srNum}</td>
-                <td class="p-2.5 font-bold text-blue-700 font-mono whitespace-nowrap text-xs">${escapeHtml(tx.doc_no || "-")}</td>
-                <td class="p-2.5 text-slate-700 whitespace-nowrap text-xs font-medium">${escapeHtml(tx.date || "-")}</td>
-                <td class="p-2.5 text-slate-800 text-xs leading-relaxed max-w-[150px]">
+                <td class="p-2.5 text-center text-slate-500 font-mono text-xs align-top">${srNum}</td>
+                <td class="p-2.5 font-bold text-blue-700 font-mono text-xs align-top break-words min-w-[80px]">${escapeHtml(tx.doc_no || "-")}</td>
+                <td class="p-2.5 text-slate-700 whitespace-nowrap text-xs font-medium align-top">${escapeHtml(tx.date || "-")}</td>
+                <td class="p-2.5 text-slate-800 text-xs leading-relaxed align-top break-words min-w-[100px]">
                     <div class="font-semibold text-slate-900">${natureText}</div>
                     ${noteHtml}
                 </td>
-                <td class="p-2.5 text-slate-700 text-[11px] leading-relaxed max-w-[200px]">${execHtml}</td>
-                <td class="p-2.5 text-slate-700 text-[11px] leading-relaxed max-w-[180px]">${claimHtml}</td>
-                <td class="p-2.5 font-semibold text-emerald-700 whitespace-nowrap text-xs font-mono">${escapeHtml(consText)}</td>
+                <td class="p-2.5 text-slate-700 text-[11px] leading-relaxed break-words align-top min-w-[150px]">${execHtml}</td>
+                <td class="p-2.5 text-slate-700 text-[11px] leading-relaxed break-words align-top min-w-[150px]">${claimHtml}</td>
+                <td class="p-2.5 font-semibold text-emerald-700 text-xs font-mono align-top break-words min-w-[100px]">${escapeHtml(consText)}</td>
             </tr>
             `;
         }).join("");
