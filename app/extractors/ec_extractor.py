@@ -80,15 +80,20 @@ class ECExtractor:
                 return v
 
         # Role annotations like (பிரின்ஸ்பால்), (ஏஜெண்ட்), etc.
-        role = ""
+        role_en = ""
+        role_ta = ""
         if any(k in low for k in ['agent', 'ஏஜண்ட்', 'ஏஜெண்ட்']):
-            role = " (Agent)"
+            role_en = " (Agent)"
+            role_ta = " (ஏஜெண்ட்)"
         elif any(k in low for k in ['principal', 'பிரின்ஸ்பால்']):
-            role = " (Principal)"
+            role_en = " (Principal)"
+            role_ta = " (பிரின்ஸ்பால்)"
         elif 'lessor' in low:
-            role = " (Lessor)"
+            role_en = " (Lessor)"
+            role_ta = " (குத்தகைக்கு விடுபவர்)"
         elif 'lessee' in low:
-            role = " (Lessee)"
+            role_en = " (Lessee)"
+            role_ta = " (குத்தகைக்கு எடுப்பவர்)"
 
         # Strip numbering prefix '1. ', '2. '
         p_str = re.sub(r'^\d+\.\s*', '', p_str)
@@ -102,7 +107,38 @@ class ECExtractor:
         if not clean or len(clean) < 2:
             return ""
 
-        return clean + role
+        # Remove the Tamil/English roles from the clean string so they don't get double translated
+        clean = re.sub(r'\s*\(\s*(?:பிரின்ஸ்பால்|ஏஜெண்ட்|Agent|Principal)\s*\)', '', clean, flags=re.IGNORECASE).strip()
+
+        # Check if already bilingual Tamil (English)
+        m1 = re.match(r'^([\u0b80-\u0bff\s,\./\-]+?)\s*\(([A-Za-z0-9\s,\./\-]+)\)$', clean)
+        if m1:
+            return f"{m1.group(2).strip()}{role_en} ({m1.group(1).strip()}{role_ta})"
+
+        # Check if already bilingual English (Tamil)
+        m2 = re.match(r'^([A-Za-z0-9\s,\./\-]+?)\s*\(([\u0b80-\u0bff\s,\./\-]+)\)$', clean)
+        if m2:
+            return f"{m2.group(1).strip()}{role_en} ({m2.group(2).strip()}{role_ta})"
+
+        from app.translator import dynamic_transliterate_tamil, COMMON_NAMES, CANONICAL_PLACES
+        has_tamil = any('\u0b80' <= c <= '\u0bff' for c in clean)
+        
+        if has_tamil:
+            en_words = []
+            for w in clean.split():
+                if any('a' <= c.lower() <= 'z' for c in w) and not any('\u0b80' <= c <= '\u0bff' for c in w):
+                    en_words.append(w)
+                else:
+                    w_cl = re.sub(r'^[^\w\u0b80-\u0bff]+|[^\w\u0b80-\u0bff]+$', '', w)
+                    if not w_cl:
+                        en_words.append(w)
+                        continue
+                    en_w = CANONICAL_PLACES.get(w_cl) or COMMON_NAMES.get(w_cl) or dynamic_transliterate_tamil(w_cl).title()
+                    en_words.append(en_w if en_w else w)
+            en_full = " ".join(en_words).replace(" .", ".")
+            return f"{en_full}{role_en} ({clean}{role_ta})"
+
+        return clean + role_en
 
     def _extract_transactions_table(self, text: str) -> List[Dict[str, Any]]:
         """
