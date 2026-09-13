@@ -239,8 +239,8 @@ async def export_data(data: dict):
 
     if format_type == "pdf":
         try:
-            from app.pdf_generator import generate_ocr_pdf_report
-            pdf_bytes = generate_ocr_pdf_report(data)
+            from app.html_pdf_generator import generate_html_pdf_report
+            pdf_bytes = await generate_html_pdf_report(data)
             filename = data.get("filename", "Document")
             base_name = os.path.splitext(filename)[0]
             return Response(

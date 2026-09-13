@@ -33,10 +33,10 @@ def _get_registered_fonts():
     bundled_bold = os.path.join(base_dir, "fonts", "Catamaran-Bold.ttf")
     
     font_candidates = [
+        (r"C:\Windows\Fonts\ARIALUNI.TTF", r"C:\Windows\Fonts\ARIALUNI.TTF", "ArialUnicode", "ArialUnicode-Bold"),
         (bundled_reg, bundled_bold, "Catamaran", "Catamaran-Bold"),
         (r"C:\Windows\Fonts\latha.ttf", r"C:\Windows\Fonts\lathab.ttf", "Latha", "Latha-Bold"),
         (r"C:\Windows\Fonts\vijaya.ttf", r"C:\Windows\Fonts\vijayab.ttf", "Vijaya", "Vijaya-Bold"),
-        (r"C:\Windows\Fonts\ARIALUNI.TTF", r"C:\Windows\Fonts\ARIALUNI.TTF", "ArialUnicode", "ArialUnicode-Bold"),
     ]
 
     for reg_path, bold_path, f_reg, f_bld in font_candidates:
@@ -227,7 +227,8 @@ def generate_ec_extracted_report_pdf(ec_data: dict) -> bytes:
         fontName=font_name,
         fontSize=7.5,
         leading=9.5,
-        textColor=colors.HexColor('#0f172a')
+        textColor=colors.HexColor('#0f172a'),
+        wordWrap='CJK'
     )
 
     td_bold = ParagraphStyle(
@@ -235,7 +236,8 @@ def generate_ec_extracted_report_pdf(ec_data: dict) -> bytes:
         fontName=font_bold,
         fontSize=7.5,
         leading=9.5,
-        textColor=colors.HexColor('#0f172a')
+        textColor=colors.HexColor('#0f172a'),
+        wordWrap='CJK'
     )
 
     td_note = ParagraphStyle(
@@ -243,7 +245,8 @@ def generate_ec_extracted_report_pdf(ec_data: dict) -> bytes:
         fontName=font_name,  # Fallback from Helvetica-Oblique
         fontSize=6.8,
         leading=8.5,
-        textColor=colors.HexColor('#64748b')
+        textColor=colors.HexColor('#64748b'),
+        wordWrap='CJK'
     )
 
     caveat_p = ParagraphStyle(
@@ -395,63 +398,59 @@ def generate_ec_extracted_report_pdf(ec_data: dict) -> bytes:
     entries = ec_data.get("transactions", [])
     if entries:
         for idx, row in enumerate(entries):
-            sr_num = row.get("sr") or (idx + 1)
-            nature_val = row.get("nature", "Conveyance").replace("\n", "<br/>")
-            nature_cell = [Paragraph(nature_val, td_style)]
-            if row.get("nature_note"):
-                nature_cell.append(Spacer(1, 2))
-                nature_cell.append(Paragraph(row["nature_note"].replace("\n", "<br/>"), td_note))
-
+            sr_num = str(row.get("sr") or (idx + 1))
+            
+            doc_no_val = str(row.get("doc_no", "-")).replace("\n", " ")
+            date_val = str(row.get("date", "-")).replace("\n", " ")
+            nature_val = row.get("nature", "Conveyance").replace("\n", " ")
+            nature_note_val = row.get("nature_note", "").replace("\n", " ")
             execs_val = (row.get("executants") or row.get("parties") or "-").replace("\n", " ")
             claims_val = (row.get("claimants") or "-").replace("\n", " ")
-            cons_val = str(row.get("consideration") or "-").replace("\n", "<br/>")
+            cons_val = str(row.get("consideration") or "-").replace("\n", " ")
 
-            # Chunk very long text to prevent ReportLab LayoutError (Row taller than page)
-            def chunk_text(text, max_chars=350):
-                if not text or text == "-": return [text]
-                words = text.split(" ")
-                chunks, curr = [], []
-                curr_len = 0
-                for w in words:
-                    if curr_len + len(w) > max_chars and curr:
-                        chunks.append(" ".join(curr))
-                        curr = [w]
-                        curr_len = len(w)
-                    else:
-                        curr.append(w)
-                        curr_len += len(w) + 1
-                if curr:
-                    chunks.append(" ".join(curr))
-                return chunks
+            def chunk_text(text, max_chars):
+                text = str(text).strip()
+                if not text or text == "-": return [text] if text == "-" else []
+                return [text[i:i+max_chars] for i in range(0, len(text), max_chars)]
 
-            execs_chunks = chunk_text(execs_val, 350)
-            claims_chunks = chunk_text(claims_val, 350)
-            max_chunks = max(len(execs_chunks), len(claims_chunks))
+            doc_no_chunks = chunk_text(doc_no_val, 60)
+            date_chunks = chunk_text(date_val, 60)
+            nature_chunks = chunk_text(nature_val, 100)
+            nature_note_chunks = chunk_text(nature_note_val, 150)
+            execs_chunks = chunk_text(execs_val, 250)
+            claims_chunks = chunk_text(claims_val, 250)
+            cons_chunks = chunk_text(cons_val, 100)
+            
+            combined_nature = nature_chunks + nature_note_chunks
+            
+            if not doc_no_chunks: doc_no_chunks = [""]
+            if not date_chunks: date_chunks = [""]
+            if not combined_nature: combined_nature = [""]
+            if not execs_chunks: execs_chunks = [""]
+            if not claims_chunks: claims_chunks = [""]
+            if not cons_chunks: cons_chunks = [""]
+            
+            max_chunks = max(len(doc_no_chunks), len(date_chunks), len(combined_nature), len(execs_chunks), len(claims_chunks), len(cons_chunks))
 
             for i in range(max_chunks):
+                dn_chunk = doc_no_chunks[i] if i < len(doc_no_chunks) else ""
+                dt_chunk = date_chunks[i] if i < len(date_chunks) else ""
+                n_chunk = combined_nature[i] if i < len(combined_nature) else ""
                 e_chunk = execs_chunks[i] if i < len(execs_chunks) else ""
                 c_chunk = claims_chunks[i] if i < len(claims_chunks) else ""
+                cons_chunk = cons_chunks[i] if i < len(cons_chunks) else ""
                 
-                if i == 0:
-                    t_rows.append([
-                        Paragraph(str(sr_num), td_style),
-                        Paragraph(str(row.get("doc_no", "-")), td_bold),
-                        Paragraph(str(row.get("date", "-")).replace("\n", "<br/>"), td_style),
-                        nature_cell,
-                        Paragraph(e_chunk, td_style),
-                        Paragraph(c_chunk, td_style),
-                        Paragraph(cons_val, td_style),
-                    ])
-                else:
-                    t_rows.append([
-                        Paragraph("", td_style),
-                        Paragraph("", td_bold),
-                        Paragraph("", td_style),
-                        Paragraph("", td_style),
-                        Paragraph(e_chunk, td_style),
-                        Paragraph(c_chunk, td_style),
-                        Paragraph("", td_style),
-                    ])
+                n_style = td_note if i >= len(nature_chunks) else td_style
+                
+                t_rows.append([
+                    Paragraph(sr_num if i == 0 else "", td_style),
+                    Paragraph(dn_chunk, td_bold),
+                    Paragraph(dt_chunk, td_style),
+                    Paragraph(n_chunk, n_style),
+                    Paragraph(e_chunk, td_style),
+                    Paragraph(c_chunk, td_style),
+                    Paragraph(cons_chunk, td_style),
+                ])
 
         entries_table = Table(t_rows, colWidths=t_widths, repeatRows=1)
         entries_table.setStyle(TableStyle([
@@ -653,7 +652,8 @@ def generate_ocr_pdf_report(data: Dict[str, Any]) -> bytes:
         fontName=font_name,
         fontSize=9,
         leading=13,
-        textColor=colors.HexColor('#0f172a')
+        textColor=colors.HexColor('#0f172a'),
+        wordWrap='CJK'
     )
 
     field_conf_style = ParagraphStyle(
@@ -823,15 +823,48 @@ def generate_ocr_pdf_report(data: Dict[str, Any]) -> bytes:
         ]]
         
         for idx, row in enumerate(tx_table_data):
-            sr_num = row.get("sr") or (idx + 1)
-            t_rows.append([
-                Paragraph(str(sr_num), field_val_style),
-                Paragraph(str(row.get("doc_no", "-")), field_val_style),
-                Paragraph(str(row.get("date", "-")), field_val_style),
-                Paragraph(str(row.get("nature", "-")).replace("\n", "<br/>"), field_val_style),
-                Paragraph(str(row.get("executants") or row.get("parties") or "-").replace("\n", "<br/>"), field_val_style),
-                Paragraph(str(row.get("claimants") or "-").replace("\n", "<br/>"), field_val_style),
-            ])
+            sr_num = str(row.get("sr") or (idx + 1))
+            
+            doc_no_val = str(row.get("doc_no", "-")).replace("\n", " ")
+            date_val = str(row.get("date", "-")).replace("\n", " ")
+            nature_val = str(row.get("nature", "-")).replace("\n", " ")
+            execs_val = str(row.get("executants") or row.get("parties") or "-").replace("\n", " ")
+            claims_val = str(row.get("claimants") or "-").replace("\n", " ")
+
+            def chunk_text(text, max_chars):
+                text = str(text).strip()
+                if not text or text == "-": return [text] if text == "-" else []
+                return [text[i:i+max_chars] for i in range(0, len(text), max_chars)]
+
+            doc_no_chunks = chunk_text(doc_no_val, 60)
+            date_chunks = chunk_text(date_val, 60)
+            nature_chunks = chunk_text(nature_val, 150)
+            execs_chunks = chunk_text(execs_val, 250)
+            claims_chunks = chunk_text(claims_val, 250)
+            
+            if not doc_no_chunks: doc_no_chunks = [""]
+            if not date_chunks: date_chunks = [""]
+            if not nature_chunks: nature_chunks = [""]
+            if not execs_chunks: execs_chunks = [""]
+            if not claims_chunks: claims_chunks = [""]
+            
+            max_chunks = max(len(doc_no_chunks), len(date_chunks), len(nature_chunks), len(execs_chunks), len(claims_chunks))
+
+            for i in range(max_chunks):
+                dn_chunk = doc_no_chunks[i] if i < len(doc_no_chunks) else ""
+                dt_chunk = date_chunks[i] if i < len(date_chunks) else ""
+                n_chunk = nature_chunks[i] if i < len(nature_chunks) else ""
+                e_chunk = execs_chunks[i] if i < len(execs_chunks) else ""
+                c_chunk = claims_chunks[i] if i < len(claims_chunks) else ""
+                
+                t_rows.append([
+                    Paragraph(sr_num if i == 0 else "", field_val_style),
+                    Paragraph(dn_chunk, field_val_style),
+                    Paragraph(dt_chunk, field_val_style),
+                    Paragraph(n_chunk, field_val_style),
+                    Paragraph(e_chunk, field_val_style),
+                    Paragraph(c_chunk, field_val_style),
+                ])
             
         entries_table = Table(t_rows, colWidths=t_widths, repeatRows=1)
         entries_table.setStyle(TableStyle([

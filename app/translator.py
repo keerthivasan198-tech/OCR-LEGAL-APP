@@ -159,7 +159,12 @@ COMMON_NAMES = {
     "அம்சவல்லி": "Amsavalli", "amsavalli": "அம்சவல்லி",
     "கிருஷ்ணன்": "Krishnan", "krishnan": "கிருஷ்ணன்",
     "கார்த்திக்": "Karthik", "karthik": "கார்த்திக்",
-    "பிரியா": "Priya", "priya": "பிரியா"
+    "பிரியா": "Priya", "priya": "பிரியா",
+    "மங்கா": "Manga", "manga": "மங்கா",
+    "தேவி": "Devi", "devi": "தேவி",
+    "மங்காதேவி": "Manga Devi", "மங்கா தேவி": "Manga Devi",
+    "பிரகாஷ்": "Prakash", "prakash": "பிரகாஷ்",
+    "உத்ரா": "Uthra", "uthra": "உத்ரா"
 }
 
 REAL_ESTATE_TERMS = {
@@ -403,6 +408,8 @@ def dynamic_transliterate_tamil(word: str) -> str:
         return COMMON_NAMES[clean]
     if clean in CANONICAL_PLACES:
         return CANONICAL_PLACES[clean]
+    if clean in REAL_ESTATE_TERMS:
+        return REAL_ESTATE_TERMS[clean]
 
     # 2. Try IndicTrans2 neural translation (best quality)
     if _INDICTRANS2_IMPORTED and _it2_available():
@@ -451,9 +458,13 @@ def _phonetic_tamil_to_english(word: str) -> str:
 
     res = "".join(out)
     res = re.sub(r'ngg', 'ng', res)
-    res = re.sub(r'ee$', 'i', res)
-    res = re.sub(r'aiyoor', 'aiyur', res)
-    res = re.sub(r'oo$', 'ur', res)
+    # Simplify double vowels to standard Indian English spelling
+    res = re.sub(r'aa', 'a', res)
+    res = re.sub(r'oo', 'u', res)
+    res = re.sub(r'ee', 'i', res)
+    res = re.sub(r'iyya', 'iya', res)
+    res = re.sub(r'kirushn', 'krishn', res) # Common fix for கிருஷ்ண
+    res = re.sub(r'irushn', 'rishn', res) 
     return res.capitalize()
 
 

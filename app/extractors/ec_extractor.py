@@ -115,7 +115,7 @@ class ECExtractor:
         m = re.match(r'^([^\(\)]+?)\s*\(([^\(\)]+)\)$', clean)
         
         def transliterate_full(tamil_str):
-            from app.translator import dynamic_transliterate_tamil, COMMON_NAMES, CANONICAL_PLACES
+            from app.translator import dynamic_transliterate_tamil, COMMON_NAMES, CANONICAL_PLACES, REAL_ESTATE_TERMS
             words = []
             for w in tamil_str.split():
                 if any('a' <= c.lower() <= 'z' for c in w) and not any('\u0b80' <= c <= '\u0bff' for c in w):
@@ -125,8 +125,11 @@ class ECExtractor:
                     if not w_cl:
                         words.append(w)
                         continue
-                    en_w = CANONICAL_PLACES.get(w_cl) or COMMON_NAMES.get(w_cl) or dynamic_transliterate_tamil(w_cl).title()
-                    words.append(en_w if en_w else w)
+                    en_w = CANONICAL_PLACES.get(w_cl) or COMMON_NAMES.get(w_cl) or REAL_ESTATE_TERMS.get(w_cl) or dynamic_transliterate_tamil(w_cl).title()
+                    if isinstance(en_w, str) and en_w.strip():
+                        words.append(en_w)
+                    else:
+                        words.append(w)
             return " ".join(words).replace(" .", ".")
 
         if m:
@@ -211,7 +214,7 @@ class ECExtractor:
 
                 # Consideration Value Extraction
                 cons_val = '-'
-                m_cons = re.search(r'(?:ConsiderationValue|கமாற்றுத்தாகை|கைமாற்றுத்தொகை|கைமாற்றுத்தாகை|கைமாற்mுத்தாகை)[^\n:]*[:\s]*([^\n]*)', block, re.IGNORECASE)
+                m_cons = re.search(r'(?:Consideration\s*Value|Consideration|கமாற்றுத்தாகை|கைமாற்றுத்?\s*தொகை|கைமாற்றுத்தாகை|கைமாற்mுத்தாகை)[^\n:]*[:\s]*([^\n]*)', block, re.IGNORECASE)
                 sub_post = block[m_cons.start():m_cons.start() + 300] if m_cons else block
                 m_amt = re.search(r'(?:Rs\.?|ரூ\.?|INR|₹)\s*([0-9,]+(?:/[-–])?)', sub_post)
                 if m_amt:
