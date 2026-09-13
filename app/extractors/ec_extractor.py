@@ -101,6 +101,12 @@ class ECExtractor:
 
         if not clean or len(clean) < 2:
             return ""
+            
+        # Normalize common Tamil OCR vowel sign artifacts
+        clean = clean.replace('\u0bc7\u0bbe', '\u0bcb') # ே + ா -> ோ
+        clean = clean.replace('\u0bc6\u0bbe', '\u0bca') # ெ + ா -> ொ
+        clean = clean.replace('\u0bc7\u0bcb', '\u0bcb') # ே + ோ -> ோ
+        clean = clean.replace('\u0bc6\u0bca', '\u0bca') # ெ + ொ -> ொ
 
         # Remove the Tamil/English roles from the clean string so they don't get double translated
         clean = re.sub(r'\s*\(\s*(?:பிரின்ஸ்பால்|ஏஜெண்ட்|Agent|Principal)\s*\)', '', clean, flags=re.IGNORECASE).strip()
