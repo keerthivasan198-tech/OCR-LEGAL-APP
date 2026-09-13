@@ -81,19 +81,14 @@ class ECExtractor:
 
         # Role annotations like (பிரின்ஸ்பால்), (ஏஜெண்ட்), etc.
         role_en = ""
-        role_ta = ""
         if any(k in low for k in ['agent', 'ஏஜண்ட்', 'ஏஜெண்ட்']):
             role_en = " (Agent)"
-            role_ta = " (ஏஜெண்ட்)"
         elif any(k in low for k in ['principal', 'பிரின்ஸ்பால்']):
             role_en = " (Principal)"
-            role_ta = " (பிரின்ஸ்பால்)"
         elif 'lessor' in low:
             role_en = " (Lessor)"
-            role_ta = " (குத்தகைக்கு விடுபவர்)"
         elif 'lessee' in low:
             role_en = " (Lessee)"
-            role_ta = " (குத்தகைக்கு எடுப்பவர்)"
 
         # Strip numbering prefix '1. ', '2. '
         p_str = re.sub(r'^\d+\.\s*', '', p_str)
@@ -110,33 +105,52 @@ class ECExtractor:
         # Remove the Tamil/English roles from the clean string so they don't get double translated
         clean = re.sub(r'\s*\(\s*(?:பிரின்ஸ்பால்|ஏஜெண்ட்|Agent|Principal)\s*\)', '', clean, flags=re.IGNORECASE).strip()
 
-        # Check if already bilingual Tamil (English)
-        m1 = re.match(r'^([\u0b80-\u0bff\s,\./\-]+?)\s*\(([A-Za-z0-9\s,\./\-]+)\)$', clean)
-        if m1:
-            return f"{m1.group(2).strip()}{role_en} ({m1.group(1).strip()}{role_ta})"
-
-        # Check if already bilingual English (Tamil)
-        m2 = re.match(r'^([A-Za-z0-9\s,\./\-]+?)\s*\(([\u0b80-\u0bff\s,\./\-]+)\)$', clean)
-        if m2:
-            return f"{m2.group(1).strip()}{role_en} ({m2.group(2).strip()}{role_ta})"
-
-        from app.translator import dynamic_transliterate_tamil, COMMON_NAMES, CANONICAL_PLACES
-        has_tamil = any('\u0b80' <= c <= '\u0bff' for c in clean)
+        # Check if already bilingual A (B)
+        m = re.match(r'^([^\(\)]+?)\s*\(([^\(\)]+)\)$', clean)
         
-        if has_tamil:
-            en_words = []
-            for w in clean.split():
+        def transliterate_full(tamil_str):
+            from app.translator import dynamic_transliterate_tamil, COMMON_NAMES, CANONICAL_PLACES
+            words = []
+            for w in tamil_str.split():
                 if any('a' <= c.lower() <= 'z' for c in w) and not any('\u0b80' <= c <= '\u0bff' for c in w):
-                    en_words.append(w)
+                    words.append(w)
                 else:
                     w_cl = re.sub(r'^[^\w\u0b80-\u0bff]+|[^\w\u0b80-\u0bff]+$', '', w)
                     if not w_cl:
-                        en_words.append(w)
+                        words.append(w)
                         continue
                     en_w = CANONICAL_PLACES.get(w_cl) or COMMON_NAMES.get(w_cl) or dynamic_transliterate_tamil(w_cl).title()
-                    en_words.append(en_w if en_w else w)
-            en_full = " ".join(en_words).replace(" .", ".")
-            return f"{en_full}{role_en} ({clean}{role_ta})"
+                    words.append(en_w if en_w else w)
+            return " ".join(words).replace(" .", ".")
+
+        if m:
+            part1 = m.group(1).strip()
+            part2 = m.group(2).strip()
+            
+            p1_has_ta = any('\u0b80' <= c <= '\u0bff' for c in part1)
+            p2_has_ta = any('\u0b80' <= c <= '\u0bff' for c in part2)
+            
+            p1_is_clean_en = bool(re.match(r'^[A-Za-z0-9\s,\.\-]+$', part1))
+            p2_is_clean_en = bool(re.match(r'^[A-Za-z0-9\s,\.\-]+$', part2))
+            
+            if p1_is_clean_en and p2_has_ta:
+                return f"{part1} ({part2}){role_en}"
+            elif p2_is_clean_en and p1_has_ta:
+                return f"{part2} ({part1}){role_en}"
+            elif p2_has_ta:
+                # part2 is Tamil, part1 is either dirty English or Tamil. Discard part1.
+                en_name = transliterate_full(part2)
+                return f"{en_name} ({part2}){role_en}"
+            elif p1_has_ta:
+                # part1 is Tamil, part2 is dirty. Discard part2.
+                en_name = transliterate_full(part1)
+                return f"{en_name} ({part1}){role_en}"
+
+        has_tamil = any('\u0b80' <= c <= '\u0bff' for c in clean)
+        
+        if has_tamil:
+            en_name = transliterate_full(clean)
+            return f"{en_name} ({clean}){role_en}"
 
         return clean + role_en
 

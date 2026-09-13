@@ -142,6 +142,7 @@ CANONICAL_PLACES = {
 COMMON_NAMES = {
     "சுகுமார்": "Sukumar", "sukumar": "சுகுமார்",
     "முத்துலட்சுமி": "Muthulakshmi", "muthulakshmi": "முத்துலட்சுமி",
+    "மோகன்": "Mohan", "mohan": "மோகன்", "மேோகன்": "Mohan",
     "இராமன்": "Raman", "raman": "இராமன்", "ராமன்": "Raman",
     "செந்தில்குமார்": "Senthilkumar", "senthilkumar": "செந்தில்குமார்",
     "சந்தில்குமார்": "Senthilkumar",
@@ -442,7 +443,10 @@ def _phonetic_tamil_to_english(word: str) -> str:
                 out.append(cons + 'a')
                 i += 1
         else:
-            out.append(c)
+            if c in TAMIL_VOWEL_SIGNS:
+                out.append(TAMIL_VOWEL_SIGNS[c])
+            else:
+                out.append(c)
             i += 1
 
     res = "".join(out)
