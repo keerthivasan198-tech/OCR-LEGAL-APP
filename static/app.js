@@ -1328,15 +1328,15 @@ function renderTableTab(extraction) {
             return `
             <tr class="hover:bg-slate-50/80 transition-colors">
                 <td class="p-2.5 text-center text-slate-500 font-mono text-xs align-top">${srNum}</td>
-                <td class="p-2.5 font-bold text-blue-700 font-mono text-xs align-top break-words min-w-[80px]">${escapeHtml(tx.doc_no || "-")}</td>
+                <td class="p-2.5 font-bold text-blue-700 font-mono text-xs align-top break-words">${escapeHtml(tx.doc_no || "-")}</td>
                 <td class="p-2.5 text-slate-700 whitespace-nowrap text-xs font-medium align-top">${escapeHtml(tx.date || "-")}</td>
-                <td class="p-2.5 text-slate-800 text-xs leading-relaxed align-top break-words min-w-[100px]">
+                <td class="p-2.5 text-slate-800 text-xs leading-relaxed align-top break-words">
                     <div class="font-semibold text-slate-900">${natureText}</div>
                     ${noteHtml}
                 </td>
-                <td class="p-2.5 text-slate-700 text-[11px] leading-relaxed break-words align-top min-w-[150px]">${execHtml}</td>
-                <td class="p-2.5 text-slate-700 text-[11px] leading-relaxed break-words align-top min-w-[150px]">${claimHtml}</td>
-                <td class="p-2.5 font-semibold text-emerald-700 text-xs font-mono align-top break-words min-w-[100px]">${escapeHtml(consText)}</td>
+                <td class="p-2.5 text-slate-700 text-[11px] leading-relaxed break-words align-top">${execHtml}</td>
+                <td class="p-2.5 text-slate-700 text-[11px] leading-relaxed break-words align-top">${claimHtml}</td>
+                <td class="p-2.5 font-semibold text-emerald-700 text-xs font-mono align-top break-words">${escapeHtml(consText)}</td>
             </tr>
             `;
         }).join("");
@@ -1352,16 +1352,16 @@ function renderTableTab(extraction) {
                 </span>
             </div>
             <div class="overflow-x-auto max-h-[520px] rounded-xl border border-slate-200 shadow-2xs">
-                <table class="w-full text-left text-xs border-collapse">
+                <table class="w-full text-left text-xs border-collapse table-fixed">
                     <thead class="bg-slate-800 text-white font-semibold sticky top-0 shadow-2xs">
                         <tr>
-                            <th class="p-2.5 border-b border-slate-700 text-center w-10">Sr.</th>
-                            <th class="p-2.5 border-b border-slate-700">Doc No/Year</th>
-                            <th class="p-2.5 border-b border-slate-700">Date</th>
-                            <th class="p-2.5 border-b border-slate-700">Nature</th>
-                            <th class="p-2.5 border-b border-slate-700">Executant(s)</th>
-                            <th class="p-2.5 border-b border-slate-700">Claimant(s)</th>
-                            <th class="p-2.5 border-b border-slate-700">Consideration</th>
+                            <th class="p-2.5 border-b border-slate-700 text-center w-8">Sr.</th>
+                            <th class="p-2.5 border-b border-slate-700 w-[12%]">Doc No/Year</th>
+                            <th class="p-2.5 border-b border-slate-700 w-[10%]">Date</th>
+                            <th class="p-2.5 border-b border-slate-700 w-[15%]">Nature</th>
+                            <th class="p-2.5 border-b border-slate-700 w-[20%]">Executant(s)</th>
+                            <th class="p-2.5 border-b border-slate-700 w-[23%]">Claimant(s)</th>
+                            <th class="p-2.5 border-b border-slate-700 w-[12%]">Consideration</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-slate-200 bg-white">

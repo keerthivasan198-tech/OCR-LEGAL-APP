@@ -402,19 +402,56 @@ def generate_ec_extracted_report_pdf(ec_data: dict) -> bytes:
                 nature_cell.append(Spacer(1, 2))
                 nature_cell.append(Paragraph(row["nature_note"].replace("\n", "<br/>"), td_note))
 
-            execs_val = (row.get("executants") or row.get("parties") or "-").replace("\n", "<br/>")
-            claims_val = (row.get("claimants") or "-").replace("\n", "<br/>")
+            execs_val = (row.get("executants") or row.get("parties") or "-").replace("\n", " ")
+            claims_val = (row.get("claimants") or "-").replace("\n", " ")
             cons_val = str(row.get("consideration") or "-").replace("\n", "<br/>")
 
-            t_rows.append([
-                Paragraph(str(sr_num), td_style),
-                Paragraph(str(row.get("doc_no", "-")), td_bold),
-                Paragraph(str(row.get("date", "-")).replace("\n", "<br/>"), td_style),
-                nature_cell,
-                Paragraph(execs_val, td_style),
-                Paragraph(claims_val, td_style),
-                Paragraph(cons_val, td_style),
-            ])
+            # Chunk very long text to prevent ReportLab LayoutError (Row taller than page)
+            def chunk_text(text, max_chars=350):
+                if not text or text == "-": return [text]
+                words = text.split(" ")
+                chunks, curr = [], []
+                curr_len = 0
+                for w in words:
+                    if curr_len + len(w) > max_chars and curr:
+                        chunks.append(" ".join(curr))
+                        curr = [w]
+                        curr_len = len(w)
+                    else:
+                        curr.append(w)
+                        curr_len += len(w) + 1
+                if curr:
+                    chunks.append(" ".join(curr))
+                return chunks
+
+            execs_chunks = chunk_text(execs_val, 350)
+            claims_chunks = chunk_text(claims_val, 350)
+            max_chunks = max(len(execs_chunks), len(claims_chunks))
+
+            for i in range(max_chunks):
+                e_chunk = execs_chunks[i] if i < len(execs_chunks) else ""
+                c_chunk = claims_chunks[i] if i < len(claims_chunks) else ""
+                
+                if i == 0:
+                    t_rows.append([
+                        Paragraph(str(sr_num), td_style),
+                        Paragraph(str(row.get("doc_no", "-")), td_bold),
+                        Paragraph(str(row.get("date", "-")).replace("\n", "<br/>"), td_style),
+                        nature_cell,
+                        Paragraph(e_chunk, td_style),
+                        Paragraph(c_chunk, td_style),
+                        Paragraph(cons_val, td_style),
+                    ])
+                else:
+                    t_rows.append([
+                        Paragraph("", td_style),
+                        Paragraph("", td_bold),
+                        Paragraph("", td_style),
+                        Paragraph("", td_style),
+                        Paragraph(e_chunk, td_style),
+                        Paragraph(c_chunk, td_style),
+                        Paragraph("", td_style),
+                    ])
 
         entries_table = Table(t_rows, colWidths=t_widths, repeatRows=1)
         entries_table.setStyle(TableStyle([
