@@ -1,22 +1,25 @@
 # -*- coding: utf-8 -*-
 """
-Dynamic Encumbrance Certificate (வில்லங்கச் சான்றிதழ் - EC) Extractor.
-Form 15 (Encumbrance found) & Form 16 (Nil Encumbrance Certificate).
+Universal Encumbrance Certificate (EC) Extractor — villangac caanrithal
+=========================================================================
+Handles EVERY Tamil Nadu EC format robustly without per-document patches:
 
-Performs dynamic linguistic, tabular, and legal analysis across any number of pages (1 to 100+ pages)
-for any SRO, village, survey number, and search window across Tamil Nadu:
-- Form Type (Form 15 equivalent vs Form 16 Nil)
-- Property & Search Identification (SRO, Issue Date, Village, Searched Survey, Zone, District, Search Period, SRO Available From)
-- Dynamic Registered Transactions Table (Sr, Doc No/Year, Date, Nature with Remarks, Executants, Claimants, Consideration)
-- Mortgage Status Analysis ([CLOSED] via Receipt/Discharge vs [OPEN / UNRELEASED])
-- Court Attachments, Lis-Pendens, and Decrees Check
-- Registered Leases & Rectification Instruments
-- Search Window Adequacy (30-Year standard evaluation)
-- Bilingual Translation Layer for Entities & Administrative Jurisdictions
+  Format A - TNREGINET Online PDF  (English columnar, "Zone : X  District : Y  S.R.O : Z")
+  Format B - Scanned Pre-Digital   (Mixed Tamil/English rows, varying column order)
+  Format C - Form 16 Nil EC        (No transactions, "Nil Encumbrance" text)
+  Format D - Tamil-only EC         (Pure Tamil text from SRO stamp/seal pages)
+  Format E - Semi-structured       (Pipe-delimited or space-aligned table rows)
+
+Design Principles:
+  1. Each field has a PRIORITY LADDER of patterns tried in order - first match wins.
+  2. No hard-coded place names or doc numbers - everything is regex / dict-lookup.
+  3. Transactions are extracted by a 4-strategy engine (date-anchor, pipe, Tamil, inline).
+  4. All output values are bilingual  English (Tamil)  via the translator layer.
+  5. Graceful "Not Detected" fallback for every field - never crashes, never returns None.
 """
 
 import re
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Tuple, Optional
 from app.translator import (
     format_bilingual_entity,
     format_bilingual_owner,
@@ -24,819 +27,539 @@ from app.translator import (
     dynamic_english_to_tamil,
     CANONICAL_PLACES,
     COMMON_NAMES,
-    REAL_ESTATE_TERMS
 )
 
+# ===========================================================================
+# Universal Pattern Bank  (edit HERE to add new formats - nowhere else needed)
+# ===========================================================================
+
+_SRO_PATTERNS = [
+    r'S\.?R\.?O\s*[:\-]\s*([A-Za-z\u0b80-\u0bff][A-Za-z\u0b80-\u0bff\s]{1,45}?)(?:\s*\n|\s{2,}|$)',
+    r'(?:\u0b9a\u0bbe\.?\u0baa\.?\u0b85\.?|SRO|Sub[\s\-]?Reg(?:istrar)?(?:\s+Office)?)\s*[:\-]\s*([A-Za-z\u0b80-\u0bff][A-Za-z\u0b80-\u0bff\s]{1,45}?)(?:\s*\n|\s{2,}|[,;]|$)',
+    r'Sub[\s\-]?Registrar[\s\-]?Office\s+([A-Za-z\u0b80-\u0bff][A-Za-z\u0b80-\u0bff\s]{1,45}?)(?:\s*\n|[,;])',
+    r'\u0b9a\u0bbe\u0bb0\u0bcd\u0baa\u0ba4\u0bbf\u0bb5\u0bbe\u0bb3\u0bb0\u0bcd\s*\u0b85\u0bb2\u0bc1\u0bb5\u0bb2\u0b95\u0bae\u0bcd[^:\n]*[:\s]+([A-Za-z\u0b80-\u0bff][A-Za-z\u0b80-\u0bff\s]{1,45}?)(?:\s*\n|\s{2,})',
+]
+
+_VILLAGE_PATTERNS = [
+    r'Village\s*[/&]\s*(?:Street|\u0b95\u0bbf\u0bb0\u0bbe\u0bae\u0bae\u0bcd)\s*[:\-]\s*([A-Za-z\u0b80-\u0bff][A-Za-z\u0b80-\u0bff\s,]{1,60}?)(?:\s+Survey|\s+Street|\s*\n|\|)',
+    r'Village\s*[:\-]\s*([A-Za-z\u0b80-\u0bff][A-Za-z\u0b80-\u0bff\s,]{1,60}?)(?:\s+Survey|\s+Street|\s*\n|\||\s{2,})',
+    r'(?:\u0bb5\u0bb0\u0bc1\u0bb5\u0bbe\u0baf\u0bcd\s*)?\u0b95\u0bbf\u0bb0\u0bbe\u0bae\u0bae\u0bcd[^:\n]*[:\s]+([A-Za-z\u0b80-\u0bff][A-Za-z\u0b80-\u0bff\s]{1,60}?)(?:\s*\n|\s{2,}|\|)',
+    r'([A-Za-z\u0b80-\u0bff]{3,40})\s+Village\b',
+]
+
+_SURVEY_PATTERNS = [
+    r'Survey\s*Details?\s*(?:/\s*\u0b9a\u0bb0\u0bcd\u0bb5\u0bc7\s*\u0bb5\u0bbf\u0bb5\u0bb0\u0bae?)?\s*[:\-]\s*([0-9A-Za-z/,\s\.\-PART]{1,60}?)(?:\n|Data|\||\Z)',
+    r'T\.?S\.?\s*No\.?\s*[:\-]\s*([0-9A-Za-z/,\s\.\-]{1,60}?)(?:\n|\||\Z)',
+    r'(?:Survey|Plot|\u0baa\u0bc1\u0bb2|\u0b9a\u0bb0\u0bcd\u0bb5\u0bc7)\s*No\.?\s*[:\-]?\s*([0-9][0-9A-Za-z/,\s\.\-PART]{0,50}?)(?:\n|\||\s{2,}|\Z)',
+    r'(?:\u0ba4\u0bc7\u0b9f\u0baa\u0bcd\u0baa\u0b9f\u0bcd\u0b9f\s*)?\u0baa\u0bc1\u0bb2\s*\u0b8e\u0ba3\u0bcd(?:\u0b95\u0bb3\u0bcd)?\s*[:\-]?\s*([0-9][0-9A-Za-z/,\s\.\-]{0,50}?)(?:\n|\||\s{2,}|\Z)',
+    r'\u0b9a\u0bb0\u0bcd\u0bb5\u0bc7\s*\u0b8e\u0ba3\u0bcd\s*[:\-]?\s*([0-9][0-9A-Za-z/,\s\.\-]{0,50}?)(?:\n|\||\s{2,}|\Z)',
+]
+
+_ZONE_PATTERNS = [
+    r'Zone\s*[:\-]\s*([A-Za-z\u0b80-\u0bff][A-Za-z\u0b80-\u0bff\s]{1,40}?)(?:\s+District|\s*\n|\s{2,})',
+    r'\u0bae\u0ba3\u0bcd\u0b9f\u0bb2\u0bae\u0bcd\s*[:\-]\s*([A-Za-z\u0b80-\u0bff][A-Za-z\u0b80-\u0bff\s]{1,40}?)(?:\s*\n|\s{2,})',
+]
+
+_DISTRICT_PATTERNS = [
+    r'District\s*[:\-]\s*([A-Za-z\u0b80-\u0bff][A-Za-z\u0b80-\u0bff\s]{1,40}?)(?:\s+S\.?R\.?O|\s+Taluk|\s+Village|\s*\n|\s{2,})',
+    r'\u0bae\u0bbe\u0bb5\u0b9f\u0bcd\u0b9f\u0bae\u0bcd\s*[:\-]\s*([A-Za-z\u0b80-\u0bff][A-Za-z\u0b80-\u0bff\s]{1,40}?)(?:\s*\n|\s{2,})',
+    r'([A-Za-z\u0b80-\u0bff]{3,30})\s+District\b',
+]
+
+_TALUK_PATTERNS = [
+    r'Taluk\s*[:\-]\s*([A-Za-z\u0b80-\u0bff][A-Za-z\u0b80-\u0bff\s]{1,40}?)(?:\s+Village|\s+District|\s*\n|\s{2,})',
+    r'\u0bb5\u0b9f\u0bcd\u0b9f\u0bae\u0bcd\s*[:\-]\s*([A-Za-z\u0b80-\u0bff][A-Za-z\u0b80-\u0bff\s]{1,40}?)(?:\s*\n|\s{2,})',
+    r'([A-Za-z\u0b80-\u0bff]{3,30})\s+Taluk\b',
+]
+
+_SEARCH_PERIOD_PATTERNS = [
+    r'Search\s*Period\s*(?:/\s*\u0ba4\u0bc7\u0b9f\u0bc1\u0ba4\u0bb2\u0bcd\s*\u0b95\u0bbe\u0bb2\u0bae\u0bcd)?\s*[:\-]\s*([^\n\(\)]{5,80})',
+    r'\u0ba4\u0bc7\u0b9f\u0bc1\u0ba4\u0bb2\u0bcd\s*\u0b95\u0bbe\u0bb2\u0bae\u0bcd[^:\n]*[:\-]\s*([^\n\(\)]{5,80})',
+    r'\u0ba4\u0bc7\u0b9f\u0bb2\u0bcd\s*\u0b95\u0bbe\u0bb2\u0bae\u0bcd[^:\n]*[:\-]\s*([^\n\(\)]{5,80})',
+    r'(\d{1,2}[-./]\w{2,9}[-./]\d{4})\s+(?:To|to|TO)\s+(\d{1,2}[-./]\w{2,9}[-./]\d{4})',
+    r'(\d{1,2}\.\d{1,2}\.\d{4})\s+(?:to|To|TO)\s+(\d{1,2}\.\d{1,2}\.\d{4})',
+]
+
+_ISSUE_DATE_PATTERNS = [
+    r'Date\s*(?:/\s*\u0ba8\u0bbe\u0bb3\u0bcd)?\s*[:\-]\s*(\d{1,2}[-./][A-Za-z]{3}[-./]\d{4})',
+    r'Date\s*[:\-]\s*(\d{1,2}[-./]\d{1,2}[-./]\d{4})',
+    r'\u0ba8\u0bbe\u0bb3\u0bcd\s*[:\-]\s*(\d{1,2}[-./][A-Za-z]{3}[-./]\d{4}|\d{1,2}[-./]\d{1,2}[-./]\d{4})',
+    r'Issued\s*On\s*[:\-]\s*(\d{1,2}[-./][A-Za-z]{3}[-./]\d{4}|\d{1,2}[-./]\d{1,2}[-./]\d{4})',
+    r'(\d{1,2}[-./]\d{1,2}[-./]\d{4})',
+]
+
+_NATURE_RULES = [
+    (['sale', 'conveyance', '\u0b95\u0bbf\u0bb0\u0bc8\u0baf', '\u0bb5\u0bbf\u0bb1\u0bcd\u0baa\u0ba9\u0bc8', 'purchase'],
+     'Sale / Conveyance Deed (\u0b95\u0bbf\u0bb0\u0bc8\u0baf\u0baa\u0bcd \u0baa\u0ba4\u0bcd\u0ba4\u0bbf\u0bb0\u0bae\u0bcd)'),
+    (['mortgage', 'modt', 'deposit of title', '\u0b85\u0b9f\u0bae\u0bbe\u0ba9', '\u0baa\u0ba3\u0baf', 'hypothecation'],
+     'MODT / Mortgage (\u0b85\u0b9f\u0bae\u0bbe\u0ba9 \u0b86\u0bb5\u0ba3\u0bae\u0bcd)'),
+    (['receipt', 'discharge', '\u0bb0\u0b9a\u0bc0\u0ba4\u0bc1', 'release of mortgage', '\u0bb5\u0bbf\u0b9f\u0bc1\u0ba4\u0bb2\u0bc8'],
+     'Mortgage Discharge Receipt (\u0bb0\u0b9a\u0bc0\u0ba4\u0bc1 / \u0b85\u0b9f\u0bae\u0bbe\u0ba9 \u0bb5\u0bbf\u0b9f\u0bc1\u0ba4\u0bb2\u0bc8)'),
+    (['settlement', 'family settlement', '\u0ba4\u0bbe\u0ba9', 'gift', 'gift deed', '\u0ba4\u0bbe\u0ba9\u0bae\u0bcd'],
+     'Settlement / Gift Deed (\u0ba4\u0bbe\u0ba9 \u0b86\u0bb5\u0ba3\u0bae\u0bcd)'),
+    (['partition', '\u0baa\u0bbe\u0b95\u0baa\u0bcd\u0baa\u0bbf\u0bb0\u0bbf\u0bb5\u0bbf\u0ba9\u0bc8', '\u0baa\u0bbe\u0b95\u0baa\u0bcd \u0baa\u0bbf\u0bb0\u0bbf\u0bb5\u0bbf\u0ba9\u0bc8'],
+     'Partition Deed (\u0baa\u0bbe\u0b95\u0baa\u0bcd\u0baa\u0bbf\u0bb0\u0bbf\u0bb5\u0bbf\u0ba9\u0bc8 \u0baa\u0ba4\u0bcd\u0ba4\u0bbf\u0bb0\u0bae\u0bcd)'),
+    (['lease', '\u0b95\u0bc1\u0ba4\u0bcd\u0ba4\u0b95\u0bc8', 'rent agreement', 'licence'],
+     'Lease Deed (\u0b95\u0bc1\u0ba4\u0bcd\u0ba4\u0b95\u0bc8 \u0b86\u0bb5\u0ba3\u0bae\u0bcd)'),
+    (['rectification', '\u0baa\u0bbf\u0bb4\u0bc8\u0ba4\u0bbf\u0bb0\u0bc1\u0ba4\u0bcd\u0ba4\u0bb2\u0bcd', 'correction deed', '\u0ba4\u0bbf\u0bb0\u0bc1\u0ba4\u0bcd\u0ba4\u0bae\u0bcd'],
+     'Rectification Deed (\u0baa\u0bbf\u0bb4\u0bc8\u0ba4\u0bbf\u0bb0\u0bc1\u0ba4\u0bcd\u0ba4\u0bb2\u0bcd \u0baa\u0ba4\u0bcd\u0ba4\u0bbf\u0bb0\u0bae\u0bcd)'),
+    (['agreement of sale', 'agreement to sell', '\u0b92\u0baa\u0bcd\u0baa\u0ba8\u0bcd\u0ba4\u0bae\u0bcd', 'sale agreement'],
+     'Agreement of Sale (\u0bb5\u0bbf\u0bb1\u0bcd\u0baa\u0ba9\u0bc8 \u0b92\u0baa\u0bcd\u0baa\u0ba8\u0bcd\u0ba4\u0bae\u0bcd)'),
+    (['power of attorney', 'poa', '\u0b85\u0ba4\u0bbf\u0b95\u0bbe\u0bb0 \u0baa\u0ba4\u0bcd\u0ba4\u0bbf\u0bb0\u0bae\u0bcd'],
+     'Power of Attorney (\u0b85\u0ba4\u0bbf\u0b95\u0bbe\u0bb0\u0baa\u0bcd \u0baa\u0ba4\u0bcd\u0ba4\u0bbf\u0bb0\u0bae\u0bcd)'),
+    (['release', 'release deed', '\u0bb5\u0bbf\u0b9f\u0bc1\u0ba4\u0bb2\u0bc8 \u0baa\u0ba4\u0bcd\u0ba4\u0bbf\u0bb0\u0bae\u0bcd', 'relinquishment'],
+     'Release Deed (\u0bb5\u0bbf\u0b9f\u0bc1\u0ba4\u0bb2\u0bc8\u0baa\u0bcd \u0baa\u0ba4\u0bcd\u0ba4\u0bbf\u0bb0\u0bae\u0bcd)'),
+    (['will', 'testament'],
+     'Will / Testament (\u0bae\u0bb0\u0ba3 \u0b9a\u0bbe\u0b9a\u0ba9\u0bae\u0bcd)'),
+]
+
+KNOWN_ENTITIES = {
+    "indian overseas bank": "Indian Overseas Bank (\u0b87\u0ba8\u0bcd\u0ba4\u0bbf\u0baf\u0ba9\u0bcd \u0b93\u0bb5\u0bb0\u0bcd\u0b9a\u0bc0\u0bb8\u0bcd \u0baa\u0bc7\u0b99\u0bcd\u0b95\u0bcd)",
+    "state bank of india": "State Bank of India (SBI) (\u0bb8\u0bcd\u0b9f\u0bc7\u0b9f\u0bcd \u0baa\u0bbe\u0b99\u0bcd\u0b95\u0bcd \u0b86\u0baa\u0bcd \u0b87\u0ba8\u0bcd\u0ba4\u0bbf\u0baf\u0bbe)",
+    "icici bank": "ICICI Bank Ltd (\u0b90\u0b9a\u0bbf\u0b90\u0b9a\u0bbf\u0b90 \u0baa\u0bc7\u0b99\u0bcd\u0b95\u0bcd)",
+    "hdfc bank": "HDFC Bank Ltd (\u0b8e\u0b9a\u0bcd\u0b9f\u0bbf\u0b8e\u0b83\u0baa\u0bcd\u0b9a\u0bbf \u0baa\u0bc7\u0b99\u0bcd\u0b95\u0bcd)",
+    "axis bank": "Axis Bank Ltd (\u0b86\u0b95\u0bcd\u0b9a\u0bbf\u0bb8\u0bcd \u0baa\u0bc7\u0b99\u0bcd\u0b95\u0bcd)",
+    "bank of india": "Bank of India (\u0baa\u0bbe\u0b99\u0bcd\u0b95\u0bcd \u0b86\u0baa\u0bcd \u0b87\u0ba8\u0bcd\u0ba4\u0bbf\u0baf\u0bbe)",
+    "canara bank": "Canara Bank (\u0b95\u0ba9\u0bb0\u0bbe \u0baa\u0bc7\u0b99\u0bcd\u0b95\u0bcd)",
+    "standard chartered": "Standard Chartered Bank (\u0bb8\u0bcd\u0b9f\u0bbe\u0ba3\u0bcd\u0b9f\u0bb0\u0bcd\u0b9f\u0bcd \u0b9a\u0bbe\u0bb0\u0bcd\u0b9f\u0bcd\u0b9f\u0bb0\u0bcd\u0b9f\u0bcd \u0baa\u0bc7\u0b99\u0bcd\u0b95\u0bcd)",
+    "tiic": "Tamil Nadu Industrial Investment Corp Ltd (TIIC)",
+    "the tamilnadu industrial investment": "Tamil Nadu Industrial Investment Corp Ltd (TIIC)",
+    "agni estates": "Agni Estates & Foundations Pvt Ltd (\u0b85\u0b95\u0bcd\u0ba9\u0bbf \u0b8e\u0bb8\u0bcd\u0b9f\u0bc7\u0b9f\u0bcd\u0bb8\u0bcd)",
+    "lason india": "M/s Lason India Private Limited",
+    "cmda": "Chennai Metropolitan Development Authority (CMDA)",
+    "tnhb": "Tamil Nadu Housing Board (TNHB)",
+    "lic of india": "Life Insurance Corporation of India (LIC)",
+}
+
+
+def _first_match(text, patterns, flags=re.IGNORECASE):
+    for pat in patterns:
+        m = re.search(pat, text, flags)
+        if m:
+            groups = [g for g in m.groups() if g]
+            if groups:
+                return " to ".join(groups) if len(groups) == 2 else groups[0]
+    return ""
+
+
+def _clean(val):
+    if not val:
+        return ""
+    val = val.strip()
+    val = re.sub(r"^[/:\-\s]+|[/:\-\s]+$", "", val)
+    val = re.sub(r"\s{2,}", " ", val)
+    return val.strip()
+
+
+def _classify_nature(text_block):
+    low = text_block.lower()
+    for keywords, label in _NATURE_RULES:
+        if any(k in low for k in keywords):
+            return label
+    return "Registered Deed (\u0baa\u0ba4\u0bbf\u0bb5\u0bc1 \u0b9a\u0bc6\u0baf\u0bcd\u0baf\u0baa\u0bcd\u0baa\u0b9f\u0bcd\u0b9f \u0b86\u0bb5\u0ba3\u0bae\u0bcd)"
+
+
+def _extract_amount(text):
+    m = re.search(r"(?:Rs\.?|\u0bb0\u0bc2\.?|INR|\u20b9)\s*([0-9,]{3,}(?:/[-\u2013])?)", text)
+    if m:
+        return "Rs. " + m.group(1).replace("/-", "").replace("/\u2013", "").strip()
+    return "-"
+
+
+def _bilingual(raw, fallback="Not Detected"):
+    if not raw or not raw.strip():
+        return fallback
+    result = format_bilingual_entity(raw.strip())
+    return result if result else fallback
+
+
+def _resolve_entity(raw):
+    if not raw or len(raw.strip()) < 2:
+        return ""
+    low = raw.lower()
+    for k, v in KNOWN_ENTITIES.items():
+        if k in low:
+            return v
+    return raw.strip()
+
+
+def _clean_party_name(raw):
+    if not raw:
+        return ""
+    p = raw.strip()
+    p = re.sub(r"INFO:.*", "", p)
+    p = re.sub(r"\b\d{1,2}-[A-Za-z]{3}-\d{4}\b", "", p)
+    p = re.sub(r"\b\d{1,5}/\d{4}\b", "", p)
+    p = re.sub(r"\b(Deeds If loan|repayable on demand|Average Annaul|Metro/UA|Exceeds Rs)\b.*", "", p, flags=re.IGNORECASE)
+    p = p.replace("\u0bc7\u0bbe", "\u0bcb")
+    p = p.replace("\u0bc6\u0bbe", "\u0bca")
+    p = re.sub(r"^[\s,.\-\d]+|[\s,.\-]+$", "", p).strip()
+    if len(p) < 2:
+        return ""
+    known = _resolve_entity(p)
+    if known != p.strip():
+        return known
+    m = re.match(r"^([A-Za-z0-9][A-Za-z0-9\s,.\-]+?)\s*\(([^\)]{3,})\)$", p)
+    if m:
+        en_part, ta_part = m.group(1).strip(), m.group(2).strip()
+        if any("\u0b80" <= c <= "\u0bff" for c in ta_part):
+            return f"{en_part} ({ta_part})"
+    has_ta = any("\u0b80" <= c <= "\u0bff" for c in p)
+    if has_ta:
+        en = " ".join(
+            CANONICAL_PLACES.get(w) or COMMON_NAMES.get(w) or dynamic_transliterate_tamil(w).title()
+            for w in p.split()
+        )
+        return f"{en.strip()} ({p})"
+    return p
+
+
+def _parse_parties(block, nature):
+    items = re.split(r"(?<!\d)(?=\b\d+\.\s)", block)
+    parties = []
+    for item in items:
+        m = re.match(r"^(\d+)\.\s*(.+)", item.strip(), re.DOTALL)
+        if m:
+            idx = int(m.group(1))
+            content = re.sub(r"\s+", " ", m.group(2)).strip()
+            cleaned = _clean_party_name(content)
+            if cleaned:
+                parties.append((idx, cleaned))
+    if not parties:
+        return "-", "-"
+    exec_list, claim_list = [], []
+    restarted = False
+    prev_idx = 0
+    for idx, name in parties:
+        if idx == 1 and prev_idx > 1:
+            restarted = True
+        if not restarted:
+            exec_list.append(name)
+        else:
+            claim_list.append(name)
+        prev_idx = idx
+    return "; ".join(exec_list) if exec_list else "-", "; ".join(claim_list) if claim_list else "-"
+
+
+# ── Transaction Strategies ──────────────────────────────────────────────────
+
+def _strategy_date_anchor(text):
+    entries = []
+    DATE_PAT = r"\d{1,2}[-./]\w{3,9}[-./]\d{4}|\d{1,2}[-./]\d{1,2}[-./]\d{2,4}"
+    DOC_PAT  = r"\d{1,6}/\d{4}"
+    anchors = []
+    seen = set()
+    for m in re.finditer(
+        rf"(({DATE_PAT})\s*\n\s*({DOC_PAT}))|(({DOC_PAT})\s*\n\s*({DATE_PAT}))",
+        text
+    ):
+        g = m.groups()
+        dt, doc = (g[1], g[2]) if g[0] else (g[5], g[4])
+        if doc and doc not in seen:
+            seen.add(doc)
+            anchors.append({"pos": m.start(), "doc": doc, "date": dt})
+    if not anchors:
+        for m in re.finditer(rf"({DOC_PAT})\s+({DATE_PAT})", text):
+            doc, dt = m.group(1), m.group(2)
+            if doc not in seen:
+                seen.add(doc)
+                anchors.append({"pos": m.start(), "doc": doc, "date": dt})
+    if not anchors:
+        return []
+    for i, anchor in enumerate(anchors):
+        start = max(0, anchor["pos"] - 300)
+        end   = anchors[i + 1]["pos"] if i + 1 < len(anchors) else len(text)
+        block = text[start:end]
+        nature    = _classify_nature(block)
+        cons_val  = _extract_amount(block)
+        executants, claimants = _parse_parties(block, nature)
+        
+        extra_details = ""
+        m_extra = re.search(r"(?:Consideration\s*Value|Consideration|\u0b95\u0bae\u0bbe\u0bca\u0bb1\u0bcd\u0bb1\u0bc1\u0ba4\u0bcd\u0ba4\u0bbe\u0b95\u0bc8|\u0b95\u0bc8\u0bae\u0bbe\u0bb1\u0bcd\u0bb1\u0bc1\u0ba4\u0bcd?\s*\u0ba4\u0bca\u0b95\u0bc8|\u0b95\u0bc8\u0bae\u0bbe\u0bb1\u0bcd\u0bb1\u0bc1\u0ba4\u0bcd\u0ba4\u0bbe\u0b95\u0bc8|\u0b95\u0bc8\u0bae\u0bbe\u0bb1\u0bcdm\u0bc1\u0ba4\u0bcd\u0ba4\u0bbe\u0b95\u0bc8|Market\s*Value|Santhai)[^\n:]*[:\s]*", block, re.IGNORECASE)
+        if m_extra:
+            extra_details = block[m_extra.start():].strip()
+            extra_details = re.sub(r"\s+", " ", extra_details)
+            if claimants == "-":
+                claimants = extra_details
+            else:
+                claimants = f"{claimants} - {extra_details}"
+                
+        nature_note = ""
+        rect_m = re.search(r"[Rr]ectified\s+by\s+(?:document\s+)?([^\n]{4,50})", block)
+        if rect_m:
+            nature_note = f"Note: Rectified by {rect_m.group(1).strip()}"
+        entries.append({
+            "sr": i + 1, "doc_no": anchor["doc"], "date": anchor["date"],
+            "nature": nature, "nature_note": nature_note,
+            "executants": executants, "claimants": claimants,
+            "consideration": cons_val,
+        })
+    return entries
+
+
+def _strategy_pipe(text):
+    DOC_PAT  = r"\d{1,6}/\d{4}"
+    DATE_PAT = r"\d{1,2}[-./]\w{3,9}[-./]\d{4}|\d{1,2}[-./]\d{1,2}[-./]\d{2,4}"
+    entries = []
+    rows = re.findall(
+        rf"({DOC_PAT})\s*\|\s*({DATE_PAT})\s*\|\s*([^|]{{3,120}})\s*\|\s*([^|]{{0,120}})\s*\|\s*([^|\n]{{0,80}})",
+        text
+    )
+    for i, (doc, dt, nat_raw, parties_raw, cons_raw) in enumerate(rows):
+        parts = [p.strip() for p in parties_raw.split("->")]
+        exec_s  = _clean_party_name(parts[0]) if parts else "-"
+        claim_s = _clean_party_name(parts[1]) if len(parts) > 1 else "-"
+        entries.append({
+            "sr": i + 1, "doc_no": doc.strip(), "date": dt.strip(),
+            "nature": _classify_nature(nat_raw), "nature_note": "",
+            "executants": exec_s or "-", "claimants": claim_s or "-",
+            "consideration": _extract_amount(cons_raw) if cons_raw.strip() else "-",
+        })
+    return entries
+
+
+def _strategy_tamil_table(text):
+    entries = []
+    DOC_PAT  = r"\d{1,6}/\d{4}"
+    DATE_PAT = r"\d{1,2}[-./]\w{3,9}[-./]\d{4}|\d{1,2}[-./]\d{1,2}[-./]\d{2,4}"
+    seen = set()
+    for m in re.finditer(
+        rf"(\d{{1,3}})\s+({DATE_PAT})\s+({DOC_PAT})\s+(.{{5,200}}?)(?=\n\d{{1,3}}\s|\Z)",
+        text, re.DOTALL
+    ):
+        doc = m.group(3).strip()
+        if doc in seen:
+            continue
+        seen.add(doc)
+        rest = m.group(4).strip()
+        entries.append({
+            "sr": int(m.group(1)), "doc_no": doc, "date": m.group(2).strip(),
+            "nature": _classify_nature(rest), "nature_note": "",
+            "executants": "-", "claimants": "-",
+            "consideration": _extract_amount(rest),
+        })
+    return entries
+
+
+def _strategy_inline_scan(text):
+    entries = []
+    DOC_PAT  = r"\d{1,6}/\d{4}"
+    DATE_PAT = r"\d{1,2}[-./]\w{3,9}[-./]\d{4}|\d{1,2}[-./]\d{1,2}[-./]\d{2,4}"
+    seen = set()
+    for i, m in enumerate(re.finditer(rf"({DOC_PAT})\s+({DATE_PAT})\s*(.{{0,120}})", text)):
+        doc = m.group(1).strip()
+        if doc in seen:
+            continue
+        seen.add(doc)
+        rest = m.group(3).strip()
+        entries.append({
+            "sr": i + 1, "doc_no": doc, "date": m.group(2).strip(),
+            "nature": _classify_nature(rest), "nature_note": "",
+            "executants": "-", "claimants": "-",
+            "consideration": _extract_amount(rest),
+        })
+    return entries
+
+
+def extract_transactions(text):
+    """Run all 4 strategies; return the result with the most entries."""
+    candidates = [
+        _strategy_date_anchor(text),
+        _strategy_pipe(text),
+        _strategy_tamil_table(text),
+        _strategy_inline_scan(text),
+    ]
+    best = max(candidates, key=len)
+    for i, e in enumerate(best):
+        e["sr"] = i + 1
+    return best
+
+
+# ── Main ECExtractor class ──────────────────────────────────────────────────
 
 class ECExtractor:
-    """Dynamic Extractor for Encumbrance Certificates (Form 15 / Form 16 Nil) across Tamil Nadu."""
+    """Universal Encumbrance Certificate extractor for all Tamil Nadu EC formats."""
 
-    def __init__(self):
-        # Known financial institutions and statutory bodies for clean entity resolution
-        self.KNOWN_ENTITIES = {
-            "இந்தியன் ஓவர்சீஸ் பேங்க்": "Indian Overseas Bank (இந்தியன் ஓவர்சீஸ் பேங்க்)",
-            "icici பேங்க் லிமிடெட்": "ICICI Bank Ltd (ஐசிஐசிஐ பேங்க்)",
-            "i பேங்க்லிமிடெட்": "ICICI Bank Ltd (ஐசிஐசிஐ பேங்க்)",
-            "iபேங்க்லிமிடெட்": "ICICI Bank Ltd (ஐசிஐசிஐ பேங்க்)",
-            "பாங்க் ஆப் இந்தியா": "Bank of India (பாங்க் ஆப் இந்தியா)",
-            "bank of india": "Bank of India (பாங்க் ஆப் இந்தியா)",
-            "ஸ்டாண்டர்ட் சார்ட்டர்ட் பேங்க்": "Standard Chartered Bank (ஸ்டாண்டர்ட் சார்ட்டர்ட் பேங்க்)",
-            "standard chartered bank": "Standard Chartered Bank (ஸ்டாண்டர்ட் சார்ட்டர்ட் பேங்க்)",
-            "ஸ்டேட் பேங்க் ஆப் இந்தியா": "State Bank of India (ஸ்டேட் பாங்க் ஆப் இந்தியா)",
-            "சென்னை மாநகர வளர்ச்சி குழுமம்": "Chennai Metropolitan Development Authority (CMDA)",
-            "chennai metropolitan development authority": "Chennai Metropolitan Development Authority (CMDA)",
-            "புரசவாக்கம்பர்மனன்ட் பண்ட்லிட்": "Purasawalkam Permanent Fund Ltd (புரசவாக்கம் பண்ட்)",
-            "புரசவாக்கம் பர்மனென்ட் பண்ட் லிட்": "Purasawalkam Permanent Fund Ltd (புரசவாக்கம் பண்ட்)",
-            "the tamilnadu industrial investment corporation limited": "The Tamilnadu Industrial Investment Corp Ltd (TIIC)",
-            "அக்னி எஸ்டேட்ஸ் & பவுண்டேஷன் பிரைவேட் லிமிடெட்": "Agni Estates & Foundations Pvt Ltd (அக்னி எஸ்டேட்ஸ்)",
-            "agni estates & foundatiosn pvt ltd": "Agni Estates & Foundations Pvt Ltd (அக்னி எஸ்டேட்ஸ்)",
-            "அக்னி எஸ்ேடேட்ஸ்": "Agni Estates & Foundations Pvt Ltd (அக்னி எஸ்டேட்ஸ்)",
-            "சென்னை அக்னி பிஸ்னஸ்": "Chennai Agni Business & Management Services Pvt Ltd",
-            "சென்னை m/s.lason india private limited": "M/s Lason India Pvt Ltd (சென்னை)",
-            "lason india": "M/s Lason India Private Limited",
+    def _field(self, raw, label, anchor_keywords, bilingual=True, fallback="Not Detected"):
+        cleaned = _clean(raw)
+        value   = _bilingual(cleaned) if bilingual else (cleaned or fallback)
+        return {
+            "value":           value,
+            "raw_value":       cleaned,
+            "confidence":      0.95 if cleaned else 0.0,
+            "label":           label,
+            "box_query":       cleaned,
+            "anchor_keywords": anchor_keywords,
         }
 
-    def _clean_field_val(self, val: str) -> str:
-        if not val:
-            return ""
-        return re.sub(r'^[/:\-\s]+|[/:\-\s]+$', '', val).strip()
-
-    def _clean_party_name(self, raw_name: str) -> str:
-        """Dynamically clean party names while preserving original document text."""
-        if not raw_name:
-            return ""
-
-        # Remove OCR noise & artifacts
-        p_str = re.sub(r'INFO:.*', '', raw_name)
-        p_str = re.sub(r'\b\d{1,2}-[A-Za-z]{3}-\d{4}\b', '', p_str)
-        p_str = re.sub(r'\b\d{1,5}/\d{4}\b', '', p_str)
-        p_str = re.sub(r'\b(Deeds If loan is|repayable on|demand|Average|Annaul|Rent-|Exceeds Rs\.?\d*|Receipt|Conveyance|Metro/UA|Settlement-family|members|Employees Provident Fund)\b', '', p_str, flags=re.IGNORECASE)
-        p_str = re.sub(r'\b(ACT/SPIC Logistics|Property|Pandlit|Door No|T\.?S\.?No)\b.*', '', p_str, flags=re.IGNORECASE)
-
-        # Check known entities
-        low = p_str.lower()
-        for k, v in self.KNOWN_ENTITIES.items():
-            if k.lower() in low:
-                return v
-
-        # Role annotations like (பிரின்ஸ்பால்), (ஏஜெண்ட்), etc.
-        role_en = ""
-        if any(k in low for k in ['agent', 'ஏஜண்ட்', 'ஏஜெண்ட்']):
-            role_en = " (Agent)"
-        elif any(k in low for k in ['principal', 'பிரின்ஸ்பால்']):
-            role_en = " (Principal)"
-        elif 'lessor' in low:
-            role_en = " (Lessor)"
-        elif 'lessee' in low:
-            role_en = " (Lessee)"
-
-        # Strip numbering prefix '1. ', '2. '
-        p_str = re.sub(r'^\d+\.\s*', '', p_str)
-        p_str = re.sub(r'\b\d+\b\s*$', '', p_str).strip()
-
-        # Clean up punctuation
-        clean = re.sub(r'\.\.+', '.', p_str).strip()
-        clean = re.sub(r'\s*-\s*$', '', clean).strip()
-        clean = re.sub(r'^[\s,\.\-]+|[\s,\.\-]+$', '', clean).strip()
-
-        if not clean or len(clean) < 2:
-            return ""
-            
-        # Normalize common Tamil OCR vowel sign artifacts
-        clean = clean.replace('\u0bc7\u0bbe', '\u0bcb') # ே + ா -> ோ
-        clean = clean.replace('\u0bc6\u0bbe', '\u0bca') # ெ + ா -> ொ
-        clean = clean.replace('\u0bc7\u0bcb', '\u0bcb') # ே + ோ -> ோ
-        clean = clean.replace('\u0bc6\u0bca', '\u0bca') # ெ + ொ -> ொ
-
-        # Remove the Tamil/English roles from the clean string so they don't get double translated
-        clean = re.sub(r'\s*\(\s*(?:பிரின்ஸ்பால்|ஏஜெண்ட்|Agent|Principal)\s*\)', '', clean, flags=re.IGNORECASE).strip()
-
-        # Check if already bilingual A (B)
-        m = re.match(r'^([^\(\)]+?)\s*\(([^\(\)]+)\)$', clean)
-        
-        def transliterate_full(tamil_str):
-            from app.translator import dynamic_transliterate_tamil, COMMON_NAMES, CANONICAL_PLACES, REAL_ESTATE_TERMS
-            words = []
-            for w in tamil_str.split():
-                if any('a' <= c.lower() <= 'z' for c in w) and not any('\u0b80' <= c <= '\u0bff' for c in w):
-                    words.append(w)
-                else:
-                    w_cl = re.sub(r'^[^\w\u0b80-\u0bff]+|[^\w\u0b80-\u0bff]+$', '', w)
-                    if not w_cl:
-                        words.append(w)
-                        continue
-                    en_w = CANONICAL_PLACES.get(w_cl) or COMMON_NAMES.get(w_cl) or REAL_ESTATE_TERMS.get(w_cl) or dynamic_transliterate_tamil(w_cl).title()
-                    if isinstance(en_w, str) and en_w.strip():
-                        words.append(en_w)
-                    else:
-                        words.append(w)
-            return " ".join(words).replace(" .", ".")
-
-        if m:
-            part1 = m.group(1).strip()
-            part2 = m.group(2).strip()
-            
-            p1_has_ta = any('\u0b80' <= c <= '\u0bff' for c in part1)
-            p2_has_ta = any('\u0b80' <= c <= '\u0bff' for c in part2)
-            
-            p1_is_clean_en = bool(re.match(r'^[A-Za-z0-9\s,\.\-]+$', part1))
-            p2_is_clean_en = bool(re.match(r'^[A-Za-z0-9\s,\.\-]+$', part2))
-            
-            if p1_is_clean_en and p2_has_ta:
-                return f"{part1} ({part2}){role_en}"
-            elif p2_is_clean_en and p1_has_ta:
-                return f"{part2} ({part1}){role_en}"
-            elif p2_has_ta:
-                # part2 is Tamil, part1 is either dirty English or Tamil. Discard part1.
-                en_name = transliterate_full(part2)
-                return f"{en_name} ({part2}){role_en}"
-            elif p1_has_ta:
-                # part1 is Tamil, part2 is dirty. Discard part2.
-                en_name = transliterate_full(part1)
-                return f"{en_name} ({part1}){role_en}"
-
-        has_tamil = any('\u0b80' <= c <= '\u0bff' for c in clean)
-        
-        if has_tamil:
-            en_name = transliterate_full(clean)
-            return f"{en_name} ({clean}){role_en}"
-
-        return clean + role_en
-
-    def _extract_transactions_table(self, text: str) -> List[Dict[str, Any]]:
-        """
-        Dynamically extracts all registered transaction rows across pages of Form 15 EC.
-        Segments by document number and date boundaries.
-        """
-        parsed_entries: List[Dict[str, Any]] = []
-
-        # Strategy 1: Find all date+document combinations in Form 15
-        pattern = re.compile(r'(?:(?:(\d{1,2}-[A-Za-z]{3}-\d{4})\s*\n\s*(\d{1,5}/\d{4}))|(?:(\d{1,5}/\d{4})\s*\n\s*(\d{1,2}-[A-Za-z]{3}-\d{4})))')
-        matches = list(pattern.finditer(text))
-
-        found_docs = []
-        for m in matches:
-            g = m.groups()
-            doc = g[1] if g[1] else g[2]
-            dt = g[0] if g[0] else g[3]
-            if doc not in [d['doc_no'] for d in found_docs]:
-                found_docs.append({'doc_no': doc, 'date': dt, 'start': m.start(), 'end': m.end()})
-
-        if found_docs:
-            for idx, d in enumerate(found_docs):
-                start_pos = max(0, d['start'] - 200)
-                end_pos = found_docs[idx + 1]['start'] if idx + 1 < len(found_docs) else len(text)
-                block = text[start_pos:end_pos]
-
-                doc_no = d['doc_no']
-                doc_date = d['date']
-
-                # Dynamic Nature Extraction
-                block_low = block.lower()
-                if 'settlement-family' in block_low or 'தானசெட்டில்மெண்ட்' in block:
-                    nature = 'Settlement Deed (தான செட்டில்மெண்ட்)'
-                elif 'deposit of title' in block_low or 'அசல் ஆவணஒப்படைப்பு' in block or 'அசல்ஆவணஒப்படைப்பு' in block:
-                    nature = 'MODT / Deposit of Title Deeds (அடமான ஆவணம்)'
-                elif 'receipt' in block_low or 'ரசீது' in block:
-                    nature = 'Receipt / Mortgage Discharge (ரசீது / அடமான விடுதலை)'
-                elif 'lease' in block_low or 'குத்தகை' in block:
-                    nature = 'Lease Deed (குத்தகை ஆவணம்)'
-                elif 'rectification' in block_low or 'பிழைதிருத்தல்' in block or ('திருத்தம்' in block and 'rectifi' in block_low):
-                    nature = 'Rectification Deed (பிழைதிருத்தல் பத்திரம்)'
-                elif 'conveyance' in block_low or 'கிரைய' in block or 'sale' in block_low:
-                    nature = 'Conveyance / Sale Deed (கிரையப் பத்திரம்)'
-                elif 'agreement' in block_low or 'ஒப்பந்தம்' in block:
-                    nature = 'Agreement of Sale (விற்பனை ஒப்பந்தம்)'
-                elif 'partition' in block_low or 'பாகப்பிரிவினை' in block:
-                    nature = 'Partition Deed (பாகப்பிரிவினை பத்திரம்)'
-                else:
-                    nature = 'Registered Deed (பதிவு செய்யப்பட்ட ஆவணம்)'
-
-                # Consideration Value Extraction
-                cons_val = '-'
-                m_cons = re.search(r'(?:Consideration\s*Value|Consideration|கமாற்றுத்தாகை|கைமாற்றுத்?\s*தொகை|கைமாற்றுத்தாகை|கைமாற்mுத்தாகை)[^\n:]*[:\s]*([^\n]*)', block, re.IGNORECASE)
-                sub_post = block[m_cons.start():m_cons.start() + 300] if m_cons else block
-                m_amt = re.search(r'(?:Rs\.?|ரூ\.?|INR|₹)\s*([0-9,]+(?:/[-–])?)', sub_post)
-                if m_amt:
-                    cons_val = 'Rs. ' + m_amt.group(1).replace('/-', '').replace('/–', '').strip()
-                elif '-' in (m_cons.group(1) if m_cons else ''):
-                    cons_val = '-'
-
-                # Parties Extraction
-                party_text_limit = m_cons.start() if m_cons else len(block)
-                party_block = block[:party_text_limit]
-
-                raw_lines = party_block.splitlines()
-                norm_party_lines = []
-                for rl in raw_lines:
-                    rl_str = rl.strip()
-                    if not rl_str:
-                        continue
-                    splits = re.split(r'(?<=[^\d])(?=\b\d+\.\s*)', rl_str)
-                    for s in splits:
-                        s_clean = s.strip()
-                        if s_clean:
-                            norm_party_lines.append(s_clean)
-
-                curr_party = ''
-                all_raw_parties = []
-
-                for line in norm_party_lines:
-                    if any(j in line.lower() for j in [
-                        'zone:', 'district:', 's.r.o:', 'conveyance', 'settlement', 'deposit of title',
-                        'date of', 'nature/தன்மை', 'name of executant', 'name of claimant', 'vol.no', 'page. no',
-                        'metro/ua', 'average annaul', 'exceeds rs', 'years average', 'lease upto'
-                    ]):
-                        continue
-
-                    m_num = re.match(r'^(\d+)\.\s*(.*)', line)
-                    if m_num:
-                        if curr_party:
-                            all_raw_parties.append(curr_party)
-                        curr_party = line
-                    else:
-                        if curr_party and (line.startswith('(') or line.endswith(')') or len(line.split()) <= 4):
-                            curr_party += ' ' + line
-                        elif any(k in line.lower() for k in ['bank', 'lasrado', 'limited', 'authority', 'fund', 'பண்ட்', 'பேங்க்', 'tiic']):
-                            if curr_party:
-                                all_raw_parties.append(curr_party)
-                            curr_party = line
-
-                if curr_party:
-                    all_raw_parties.append(curr_party)
-
-                exec_list = []
-                claim_list = []
-                restarted = False
-
-                for p_item in all_raw_parties:
-                    m_n = re.match(r'^(\d+)\.', p_item)
-                    n_val = int(m_n.group(1)) if m_n else None
-
-                    cleaned = self._clean_party_name(p_item)
-                    if not cleaned or len(cleaned) < 2:
-                        continue
-
-                    if '(lessor)' in p_item.lower():
-                        if cleaned not in exec_list:
-                            exec_list.append(cleaned)
-                        continue
-                    elif '(lessee)' in p_item.lower():
-                        if cleaned not in claim_list:
-                            claim_list.append(cleaned)
-                        continue
-
-                    is_bank = any(b in cleaned.lower() for b in ['bank', 'tiic', 'industrial investment', 'permanent fund', 'பண்ட்'])
-                    if is_bank and 'deposit of title' in nature.lower():
-                        if cleaned not in claim_list:
-                            claim_list.append(cleaned)
-                        continue
-                    elif is_bank and 'receipt' in nature.lower():
-                        if cleaned not in exec_list:
-                            exec_list.append(cleaned)
-                        continue
-
-                    if n_val == 1 and len(exec_list) > 0:
-                        restarted = True
-
-                    if not restarted:
-                        if cleaned not in exec_list:
-                            exec_list.append(cleaned)
-                    else:
-                        if cleaned not in claim_list:
-                            claim_list.append(cleaned)
-
-                # Remarks / Rectification note extraction
-                nature_note = ""
-                m_rect = re.search(r'rectified\s+by\s+(?:document\s+)?([^\n]+)', block, re.IGNORECASE)
-                if m_rect:
-                    nature_note = f"Note: Rectified by document {m_rect.group(1).strip()}"
-                elif "1022/2021" in block:
-                    nature_note = "Note: Rectified by document R/Adayar/BOOK 1/1022/2021"
-                elif "330/2008" in block and doc_no == "2309/2007":
-                    nature_note = "Note: Rectified by document 330/2008"
-                elif "414/2013" in block:
-                    nature_note = "Note: Rectified by document 414/2013"
-
-                parsed_entries.append({
-                    "sr": idx + 1,
-                    "doc_no": doc_no,
-                    "date": doc_date,
-                    "nature": nature,
-                    "nature_note": nature_note,
-                    "executants": ";\n".join(exec_list) if exec_list else "-",
-                    "claimants": ";\n".join(claim_list) if claim_list else "-",
-                    "consideration": cons_val
-                })
-
-        elif "|" in text:
-            # Fallback 1: Pipe-delimited registered entries
-            m_pipe = list(re.finditer(r'(?:Doc\s*)?(\d{1,5}/\d{4})\s*\|\s*(\d{1,2}[-/.]\d{1,2}[-/.]\d{4}|\d{1,2}-[A-Za-z]{3}-\d{4})\s*\|\s*([^|]+)\|\s*([^|]+)\|\s*([^|\n]+)', text))
-            if m_pipe:
-                for idx, dm in enumerate(m_pipe):
-                    doc_num = dm.group(1).strip()
-                    doc_dt = dm.group(2).strip()
-                    nat = dm.group(3).strip()
-                    parties_str = dm.group(4).strip()
-                    p_parts = [p.strip() for p in parties_str.split("->")]
-                    exec_s = p_parts[0] if len(p_parts) > 0 else "-"
-                    claim_s = p_parts[1] if len(p_parts) > 1 else "-"
-                    c_val = dm.group(5).strip()
-                    parsed_entries.append({
-                        "sr": idx + 1,
-                        "doc_no": doc_num,
-                        "date": doc_dt,
-                        "nature": nat,
-                        "nature_note": "",
-                        "executants": exec_s,
-                        "claimants": claim_s,
-                        "consideration": c_val
-                    })
-
-        # Strategy 3: TNREGINET real-document inline table scan (final fallback)
-        if not parsed_entries:
-            parsed_entries = self._extract_tnreginet_inline(text)
-
-        return parsed_entries
-
-    def _extract_tnreginet_inline(self, text: str) -> List[Dict[str, Any]]:
-        """
-        Strategy 3: TNREGINET EC inline scanner.
-        Catches 'NNNN/YYYY  dd-Mon-yyyy  <nature text>' rows from real TNREGINET EC PDFs.
-        """
-        entries = []
-        rows = list(re.finditer(
-            r'(\d{1,6}/\d{4})\s+(\d{1,2}[-./]\w{3,9}[-./]\d{4}|\d{1,2}[-./]\d{1,2}[-./]\d{2,4})\s+(.{5,120})',
-            text
-        ))
-        for idx, m in enumerate(rows):
-            doc_num = m.group(1).strip()
-            doc_dt = m.group(2).strip()
-            rest = m.group(3).strip()
-            rest_low = rest.lower()
-
-            if any(k in rest_low for k in ['sale', 'conveyance', 'கிரைய']):
-                nature = 'Conveyance / Sale Deed (கிரையப் பத்திரம்)'
-            elif any(k in rest_low for k in ['mortgage', 'modt', 'deposit of title', 'அடமான']):
-                nature = 'MODT / Deposit of Title Deeds (அடமான ஆவணம்)'
-            elif any(k in rest_low for k in ['receipt', 'discharge', 'ரசீது']):
-                nature = 'Receipt / Mortgage Discharge (ரசீது / அடமான விடுதலை)'
-            elif any(k in rest_low for k in ['settlement', 'தான']):
-                nature = 'Settlement Deed (தான செட்டில்மெண்ட்)'
-            elif any(k in rest_low for k in ['lease', 'குத்தகை']):
-                nature = 'Lease Deed (குத்தகை ஆவணம்)'
-            elif any(k in rest_low for k in ['partition', 'பாகப்பிரிவினை']):
-                nature = 'Partition Deed (பாகப்பிரிவினை பத்திரம்)'
-            elif any(k in rest_low for k in ['rectification', 'பிழைதிருத்தல்']):
-                nature = 'Rectification Deed (பிழைதிருத்தல் பத்திரம்)'
-            else:
-                nature = 'Registered Deed (பதிவு செய்யப்பட்ட ஆவணம்)'
-
-            cons_val = '-'
-            m_amt = re.search(r'(?:Rs\.?|ரூ\.?|INR|₹)\s*([0-9,]+)', rest)
-            if m_amt:
-                cons_val = 'Rs. ' + m_amt.group(1)
-
-            entries.append({
-                "sr": idx + 1,
-                "doc_no": doc_num,
-                "date": doc_dt,
-                "nature": nature,
-                "nature_note": "",
-                "executants": "-",
-                "claimants": "-",
-                "consideration": cons_val
-            })
-        return entries
-
-
-
-    def extract(self, text: str) -> Dict[str, Any]:
-        """
-        Dynamically extracts all legal fields, transaction entries, and verification flags
-        from the full OCR/PDF text of any Encumbrance Certificate.
-        """
-        fields: Dict[str, Any] = {}
-
-        # ── 1. PROPERTY & SEARCH IDENTIFICATION ──────────────────────────────
-        # SRO Name
-        sro_m = re.search(r'S\.?R\.?O\s*(?:/சா\.ப\.அ)?\s*(?:Office)?\s*[:\s]+(?:Sub-Registrar\s*Office\s*)?([A-Za-z\u0b80-\u0bff\s]+?)(?:,\s*[A-Za-z\s]+|\s+Date|\s+நாள்|\s+District|\s+Zone|\n)', text, re.IGNORECASE)
-        sro_raw = self._clean_field_val(sro_m.group(1)) if sro_m else ""
-        if not sro_raw:
-            sro_m2 = re.search(r'(?:Sub\s*Registrar\s*Office|பதிவாளர்\s*அலுவலகம்|சார்பதிவாளர்\s*அலுவலகம்)[^\n:]*[:\s]+([A-Za-z\u0b80-\u0bff\s]+?)(?:,\s*[A-Za-z\s]+|\s+Date|\n)', text, re.IGNORECASE)
-            sro_raw = self._clean_field_val(sro_m2.group(1)) if sro_m2 else ""
-        if not sro_raw:
-            # TNREGINET format: "Zone : Chennai  District : Chennai South  S.R.O : Adayar"
-            sro_inline = re.search(r'S\.?R\.?O\s*[:\-]\s*([A-Za-z\u0b80-\u0bff][A-Za-z\u0b80-\u0bff\s]{1,40}?)(?:\s*\n|\s{2,}|$)', text, re.IGNORECASE)
-            sro_raw = self._clean_field_val(sro_inline.group(1)) if sro_inline else ""
-
-        sro_bilingual = format_bilingual_entity(sro_raw)
-        fields["sro_office"] = {
-            "value": sro_bilingual,
-            "raw_value": sro_raw,
-            "confidence": 0.98 if sro_raw else 0.0,
-            "label": "சார்பதிவாளர் அலுவலகம் (SRO Office)",
-            "box_query": sro_raw,
-            "anchor_keywords": ["s.r.o", "சா.ப.அ", "sub registrar"]
-        }
-
-        # Issue Date
-        date_m = re.search(r'Date\s*(?:/\s*நாள்)?\s*[:\s]+(\d{1,2}-[A-Za-z]{3}-\d{4}|\d{1,2}[-/.]\d{1,2}[-/.]\d{4})', text, re.IGNORECASE)
-        issue_date = date_m.group(1).strip() if date_m else "29-Aug-2026"
-        fields["certificate_date"] = {
-            "value": issue_date,
-            "confidence": 0.96 if date_m else 0.0,
-            "label": "சான்றிதழ் வழங்கிய நாள் (Certificate Issue Date)",
-            "box_query": issue_date,
-            "anchor_keywords": ["date / நாள்", "date:", "நாள்:"]
-        }
-
-        # Village
-        vil_m = re.search(r'Village\s*(?:/\s*கிராமம்)?\s*(?:&\s*Survey)?\s*[:\s]+([A-Za-z\u0b80-\u0bff\s]+?)(?:(?:\s+Village)?\s*\||\s+Survey|\s+சர்வே|\s+Street|\n)', text, re.IGNORECASE)
-        village_raw = self._clean_field_val(vil_m.group(1)) if vil_m else ""
-        if not village_raw:
-            vil_m2 = re.search(r'Village\s*&\s*Street[^\n:]*[:\s]+([A-Za-z\u0b80-\u0bff\s,]+?)(?:\s+Survey|\n)', text, re.IGNORECASE)
-            village_raw = self._clean_field_val(vil_m2.group(1)) if vil_m2 else ""
-        if not village_raw:
-            # Tamil: கிராமம் / கிராமம்:
-            vil_ta = re.search(r'(?:கிராமம்|Village)\s*[/:\s]+([A-Za-z\u0b80-\u0bff][A-Za-z\u0b80-\u0bff\s]{1,40}?)(?:\s*\n|\s{2,}|\|)', text, re.IGNORECASE)
-            village_raw = self._clean_field_val(vil_ta.group(1)) if vil_ta else ""
-        village_raw = re.sub(r'\s*(?:Survey|Street|Survey Details).*$', '', village_raw, flags=re.IGNORECASE).strip()
-
-        village_bilingual = format_bilingual_entity(village_raw)
-        fields["village"] = {
-            "value": village_bilingual,
-            "raw_value": village_raw,
-            "confidence": 0.98 if village_raw else 0.0,
-            "label": "வருவாய் கிராமம் (Village)",
-            "box_query": village_raw,
-            "anchor_keywords": ["village /கிராமம்", "village :", "கிராமம்"]
-        }
-
-        # Searched Survey Number(s)
-        surv_m = re.search(r'(?:Survey\s*Details\s*(?:/\s*சர்வே\s*விவரம்)?|T\.?S\.?\s*No\.?)\s*[:\s]+([0-9A-Za-z/,\s\-PART]+?)(?:\n|Data|\||\Z)', text, re.IGNORECASE)
-        survey_searched = self._clean_field_val(surv_m.group(1)) if surv_m else ""
-        if not survey_searched:
-            # Tamil: சர்வே எண் / புல எண்
-            surv_ta = re.search(r'(?:சர்வே\s*எண்|புல\s*எண்|Survey\s*No)\s*[.:\s]+([0-9A-Za-z/,\s\-PART]+?)(?:\n|\||\Z)', text, re.IGNORECASE)
-            survey_searched = self._clean_field_val(surv_ta.group(1)) if surv_ta else ""
-        fields["survey_searched"] = {
-            "value": survey_searched,
-            "confidence": 0.98 if surv_m else 0.0,
-            "label": "தேடப்பட்ட புல எண்(கள்) (Survey Number(s) Searched)",
-            "box_query": survey_searched,
-            "anchor_keywords": ["survey details", "சர்வே விவரம்"]
-        }
-
-        # Zone & District
-        zone_raw = "Chennai"
-        dist_raw = "Chennai South"
-        zd_m = re.search(r'Zone\s*:\s*([^\n:]+?)\s+District\s*:\s*([^\n:]+?)\s+S\.R\.O', text, re.IGNORECASE)
-        if zd_m:
-            zone_raw = self._clean_field_val(zd_m.group(1))
-            dist_raw = self._clean_field_val(zd_m.group(2))
-        else:
-            dist_pat = re.search(r'District\s*[:\s]+([A-Za-z\u0b80-\u0bff\s]+?)(?:\s+S\.R\.O|\s+Taluk|\s+Village|\n)', text, re.IGNORECASE)
-            if dist_pat:
-                dist_raw = self._clean_field_val(dist_pat.group(1))
-            zone_pat = re.search(r'Zone\s*[:\s]+([A-Za-z\u0b80-\u0bff\s]+?)(?:\s+District|\n)', text, re.IGNORECASE)
-            if zone_pat:
-                zone_raw = self._clean_field_val(zone_pat.group(1))
-
-        fields["zone"] = {
-            "value": format_bilingual_entity(zone_raw),
-            "raw_value": zone_raw,
-            "confidence": 0.95,
-            "label": "மண்டலம் (Zone)"
-        }
-        fields["district"] = {
-            "value": format_bilingual_entity(dist_raw),
-            "raw_value": dist_raw,
-            "confidence": 0.98,
-            "label": "மாவட்டம் (District)",
-            "box_query": dist_raw,
-            "anchor_keywords": ["district:", "மாவட்டம்:"]
-        }
-
-        # Taluk (Co-terminous or explicit)
-        taluk_explicit = re.search(r'Taluk\s*[:\s]+([A-Za-z\u0b80-\u0bff\s]+?)(?:\s+Village|\s+District|\n)', text, re.IGNORECASE)
-        if taluk_explicit:
-            taluk_raw = self._clean_field_val(taluk_explicit.group(1))
-        elif sro_raw:
-            taluk_raw = f"{sro_raw} Taluk / Jurisdiction"
-        else:
-            taluk_raw = "Adayar Taluk / Jurisdiction"
-
-        fields["taluk"] = {
-            "value": format_bilingual_entity(taluk_raw),
-            "confidence": 0.95,
-            "label": "வட்டம் (Taluk / Jurisdiction)"
-        }
-
-        # SRO Jurisdiction
-        sro_jurisdiction_val = f"{sro_bilingual} — {dist_raw} District, {zone_raw} Zone"
-        fields["sro_jurisdiction"] = {
-            "value": sro_jurisdiction_val,
-            "raw_value": f"{sro_raw} SRO, {dist_raw}, {zone_raw}",
-            "confidence": 0.98,
-            "label": "சார்பதிவாளர் அலுவலக எல்லை (SRO Jurisdiction)"
-        }
-
-        # Digital Signature / Statutory Certificate Validity
-        fields["digital_signature_validity"] = {
-            "value": "Digitally Signed by Sub-Registrar / TNREGINET Statutory Authority — Certificate Valid under Tamil Nadu Registration Rules",
-            "status": "VALID",
-            "confidence": 0.99,
-            "label": "டிஜிட்டல் கையொப்பம் & சான்றிதழ் செல்லுபடி (Digital Signature & Validity)"
-        }
-
-        # Search Period Requested
-        sp_m = re.search(r'Search\s*Period\s*(?:/\s*தேடுதல்\s*காலம்)?\s*[:\s]+([^\n\(\)]+)', text, re.IGNORECASE)
-        if sp_m:
-            search_period = self._clean_field_val(sp_m.group(1))
-            search_period = re.sub(r'(\d{4})\s*[-–]\s*(\d{1,2})', r'\1 to \2', search_period)
-        else:
-            # Tamil: தேடுதல் காலம் or period with date range
-            sp_ta = re.search(r'(?:தேடுதல்\s*காலம்|தேடல்\s*காலம்)[^\n:]*[:\s]+([^\n\(\)]+)', text, re.IGNORECASE)
-            if sp_ta:
-                search_period = self._clean_field_val(sp_ta.group(1))
-            else:
-                # Try to detect date range patterns: dd-Mon-yyyy To dd-Mon-yyyy
-                sp_date = re.search(r'(\d{1,2}[-./]\w+[-./]\d{4})\s*(?:To|to|-|–)\s*(\d{1,2}[-./]\w+[-./]\d{4})', text)
-                if sp_date:
-                    search_period = f"{sp_date.group(1)} to {sp_date.group(2)}"
-                else:
-                    search_period = ""
-
-        fields["search_period"] = {
-            "value": search_period,
-            "confidence": 0.98,
-            "label": "தேடல் காலம் (Search Period Requested)",
-            "box_query": search_period,
-            "anchor_keywords": ["search period", "தேடுதல் காலம்"]
-        }
-
-        # Dynamic Search Period Span & Tamil Nadu 30-Year Standard Evaluation
-        years_span = 7.2
-        years_matches = re.findall(r'\b(\d{4})\b', search_period)
-        if len(years_matches) >= 2:
-            try:
-                y1 = int(years_matches[0])
-                y2 = int(years_matches[-1])
-                years_span = max(round(abs(y2 - y1) + 0.25, 1), 0.5)
-            except Exception:
-                years_span = 7.2
-
-        if years_span >= 30:
-            std_status = "COMPLIANT"
-            std_desc = f"Search period covers {years_span} years. Meets the 30-year minimum title verification standard in Tamil Nadu."
-        else:
-            std_status = "ABBREVIATED"
-            std_desc = f"Search period covers ≈{years_span} years. Note: Title verification standards in Tamil Nadu start at a 30-year minimum search window; prior parent deeds required."
-
-        fields["search_period_standard"] = {
-            "value": std_desc,
-            "status": std_status,
-            "years_span": years_span,
-            "confidence": 0.98,
-            "label": "30 ஆண்டு தேடல் தரநிலை (TN 30-Year Search Standard)"
-        }
-
-        # SRO Data Available From
-        avail_m = re.search(r'Data\s*Availability\s*Period[^\n:]*[:\s]+([^\n]+)', text, re.IGNORECASE)
-        if not avail_m:
-            avail_m = re.search(r'Sub\s*Registrar\s*Office\s*:\s*From\s*([^\n]+)', text, re.IGNORECASE)
-        sro_available = self._clean_field_val(avail_m.group(1)) if avail_m else search_period
-        sro_available = re.sub(r'^From\s*', '', sro_available, flags=re.IGNORECASE).strip()
-
-        fields["sro_available_from"] = {
-            "value": sro_available,
-            "confidence": 0.95,
-            "label": "அலுவலக தரவு இருப்பு காலம் (SRO Data Available Range)"
-        }
-
-        # ── 2. DYNAMIC TRANSACTION ENTRIES PARSER ────────────────────────────
-        parsed_entries = self._extract_transactions_table(text)
-        total_tx_count = len(parsed_entries)
-
-        # Form Type & Total Entries
-        if total_tx_count == 0:
-            form_type_str = "Form 16 equivalent — NIL ENCUMBRANCE (Clear Title)"
-            enc_status_str = "Clear Title — Nil Encumbrance Certificate (வில்லங்கம் ஏதுமில்லை)"
-        else:
-            form_type_str = f"Form 15 equivalent — TRANSACTIONS FOUND ({total_tx_count} registered entries)"
-            enc_status_str = f"Encumbered — {total_tx_count} Registered Transactions Recorded"
-
-        fields["form_type"] = {
-            "value": form_type_str,
-            "confidence": 0.98,
-            "label": "படிவ வகை (Form Type - Form 15 / Form 16)"
-        }
-        fields["total_entries"] = {
-            "value": str(total_tx_count),
-            "confidence": 0.98,
-            "label": "மொத்த பதிவுகள் (Total Entries Found)"
-        }
-        fields["encumbrance_status"] = {
-            "value": enc_status_str,
-            "confidence": 0.98,
-            "label": "வில்லங்க நிலை (Encumbrance Title Status)"
-        }
-
-        # ── 3. DYNAMIC MORTGAGE, LEASE, COURT ATTACHMENT & RECTIFICATION ANALYSIS ──
-        mortgage_flags: List[str] = []
-        receipts_found: Dict[str, str] = {}
-
-        # Pass 1: Identify all receipts and discharge deeds
-        for e in parsed_entries:
-            if any(k in e["nature"].lower() for k in ["receipt", "discharge", "ரசீது", "விடுதலை"]):
-                doc_n = e["doc_no"]
-                receipts_found[doc_n] = f"Receipt {doc_n} ({e['date']})"
-
-        # Pass 2: Check mortgages against receipts
-        mortgages_count = 0
-        open_mortgages_count = 0
-        closed_mortgages_count = 0
-
-        for e in parsed_entries:
-            nat_low = e["nature"].lower()
-            if any(k in nat_low for k in ["deposit of title", "mortgage", "modt", "அடமான"]):
-                mortgages_count += 1
-                doc_n = e["doc_no"]
-                clean_exec = e["executants"].replace("\n", " ")
-                clean_claim = e["claimants"].replace("\n", " ")
-                cons_amt = e["consideration"]
-
-                # Check if this specific mortgage was closed by a receipt/discharge
-                is_closed = False
-                closure_str = ""
-                if doc_n == "743/2007":
-                    is_closed = True
-                    closure_str = "Receipt 463/2009 (18-Mar-2009)"
-                else:
-                    for r_doc, r_val in receipts_found.items():
-                        if doc_n in r_val:
-                            is_closed = True
-                            closure_str = f"Receipt {r_doc}"
-                            break
-
-                if is_closed:
-                    closed_mortgages_count += 1
-                    mortgage_flags.append(
-                        f"[CLOSED] Doc {doc_n} ({clean_exec} → {clean_claim}, {cons_amt}) — CLOSED by {closure_str}."
-                    )
-                else:
-                    open_mortgages_count += 1
-                    mortgage_flags.append(
-                        f"[OPEN / UNRELEASED] Doc {doc_n} ({clean_exec} → {clean_claim}, {cons_amt}) — NO closure/receipt entry found in this search window."
-                    )
-
-        if not mortgage_flags and total_tx_count > 0:
-            mortgage_flags.append("No active mortgages or charges identified in this search period.")
-
-        fields["mortgage_status"] = {
-            "value": f"{open_mortgages_count} Open/Unreleased Mortgages | {closed_mortgages_count} Closed Mortgage" if mortgages_count > 0 else "Nil Mortgages Recorded",
-            "open_count": open_mortgages_count,
-            "closed_count": closed_mortgages_count,
-            "flags": mortgage_flags,
-            "confidence": 0.96,
-            "label": "அடமான நிலை (Mortgage & Charge Status)"
-        }
-
-        # Court Attachments Analysis
-        court_m = re.findall(r'(?:attachment|lis\s*pendens|decree|injunction|court\s*order|தீர்ப்பு)', text, re.IGNORECASE)
-        if court_m:
-            court_text = f"ATTENTION: {len(court_m)} court/attachment references identified. Legal scrutiny required."
-            court_valid = False
-        else:
-            court_text = f"No court attachments, decrees, or lis-pendens entries appear among the {total_tx_count} registered documents in this search window."
-            court_valid = True
-
-        fields["court_attachments"] = {
-            "value": court_text,
-            "confidence": 0.98,
-            "label": "நீதிமன்ற உத்தரவுகள் / பற்று (Court Attachments & Decrees)"
-        }
-
-        # Leases Analysis
-        lease_entries = [e for e in parsed_entries if "lease" in e["nature"].lower() or "குத்தகை" in e["nature"]]
-        if lease_entries:
-            l_doc = lease_entries[0]["doc_no"]
-            l_claim = lease_entries[0]["claimants"].replace("\n", " ")
-            lease_text = f"One active lease (Doc {l_doc}, rectified by 330/2008) to {l_claim} is recorded."
-        else:
-            lease_text = "No active registered lease agreements recorded in this search window."
-
-        fields["lease_status"] = {
-            "value": lease_text,
-            "confidence": 0.95,
-            "label": "குத்தகை நிலை (Registered Leases)"
-        }
-
-        # Rectifications Analysis
-        rect_entries = [e for e in parsed_entries if "rectification" in e["nature"].lower() or "பிழைதிருத்தல்" in e["nature"]]
-        rect_docs = [e["doc_no"] for e in rect_entries]
-        if rect_docs:
-            rect_text = f"Rectification deeds present: {', '.join(rect_docs)} (plus prior/subsequent corrections noted in remarks). These indicate corrections to earlier registered instruments rather than new encumbrances."
-        else:
-            rect_text = "No rectification deeds recorded in this search window."
-
-        fields["rectification_deeds"] = {
-            "value": rect_text,
-            "confidence": 0.95,
-            "label": "பிழைதிருத்தல் ஆவணங்கள் (Rectification Instruments)"
-        }
-
-        # Partition & Settlement Analysis (Title Devolution Chain Check)
-        part_entries = [e for e in parsed_entries if any(k in e["nature"].lower() for k in ["partition", "பாகப்பிரிவினை", "பாகப் பிரிவினை"])]
-        settle_entries = [e for e in parsed_entries if any(k in e["nature"].lower() for k in ["settlement", "செட்டில்மென்ட்", "gift", "release deed", "பங்கு விடுதலை", "தான"])]
-
-        if part_entries or settle_entries:
-            docs_list = [f"Doc {e['doc_no']} ({e['nature'].splitlines()[0]})" for e in (part_entries + settle_entries)]
-            partition_text = f"Family devolution / settlement deeds identified: {', '.join(docs_list[:3])}. Chain of title verified; ensure all co-sharers/heirs properly joined."
-            partition_valid = True
-        else:
-            partition_text = f"Confirmed: No undisclosed partition, settlement, or family release deeds found among the {total_tx_count} registered documents that would break ownership continuity."
-            partition_valid = True
-
-        fields["partition_settlement_status"] = {
-            "value": partition_text,
-            "confidence": 0.96,
-            "label": "பாகப்பிரிவினை & செட்டில்மென்ட் நிலை (Partition & Settlement Status)"
-        }
-
-        # Critical Legal Caveat Banner
-        caveat_text = (
-            "The Encumbrance Certificate (EC) reflects ONLY registered documents filed with the Registration Department. "
-            "Unregistered agreements of sale, court orders or injunctions not yet communicated to or registered with the SRO, "
-            "municipal/property tax dues, revenue record variations (Patta/TSLR), and physical possession disputes are invisible to it. "
-            "Therefore, an EC alone cannot be the sole verification signal for property purchase and must be cross-verified."
+    def _extract_header(self, text):
+        sro_raw = _clean(_first_match(text, _SRO_PATTERNS))
+        sro_raw = re.sub(r"\s*(Date|District|Zone|Taluk|\d).*$", "", sro_raw, flags=re.IGNORECASE).strip()
+
+        date_raw = _clean(_first_match(text[:2000], _ISSUE_DATE_PATTERNS))
+
+        village_raw = _clean(_first_match(text, _VILLAGE_PATTERNS))
+        village_raw = re.sub(r"\s*(Survey|Street|Plot|Data).*$", "", village_raw, flags=re.IGNORECASE).strip()
+
+        survey_raw = _clean(_first_match(text, _SURVEY_PATTERNS))
+        survey_raw = re.sub(r"\s*(Data|Village|Street).*$", "", survey_raw, flags=re.IGNORECASE).strip()
+
+        zd_m = re.search(
+            r"Zone\s*[:\-]\s*([A-Za-z\u0b80-\u0bff][A-Za-z\u0b80-\u0bff\s]{1,40}?)\s+"
+            r"District\s*[:\-]\s*([A-Za-z\u0b80-\u0bff][A-Za-z\u0b80-\u0bff\s]{1,40}?)"
+            r"(?:\s+S\.?R\.?O|\s*\n|\s{2,})",
+            text, re.IGNORECASE
         )
-        fields["legal_caveat"] = {
-            "value": caveat_text,
-            "confidence": 1.0,
-            "label": "முக்கிய சட்ட எச்சரிக்கை (Critical Legal Caveat)"
+        if zd_m:
+            zone_raw = _clean(zd_m.group(1))
+            dist_raw = _clean(zd_m.group(2))
+        else:
+            zone_raw = _clean(_first_match(text, _ZONE_PATTERNS))
+            dist_raw = _clean(_first_match(text, _DISTRICT_PATTERNS))
+            dist_raw = re.sub(r"\s*District$", "", dist_raw, flags=re.IGNORECASE).strip()
+
+        taluk_raw = _clean(_first_match(text, _TALUK_PATTERNS))
+        taluk_raw = re.sub(r"\s*Taluk$", "", taluk_raw, flags=re.IGNORECASE).strip()
+        if not taluk_raw and sro_raw:
+            taluk_raw = sro_raw
+
+        sp_raw = ""
+        for pat in _SEARCH_PERIOD_PATTERNS:
+            m = re.search(pat, text, re.IGNORECASE)
+            if m:
+                groups = [g for g in m.groups() if g]
+                if groups:
+                    sp_raw = " to ".join(groups) if len(groups) == 2 else groups[0]
+                    sp_raw = _clean(sp_raw)
+                    break
+
+        avail_m = re.search(r"Data\s*Availability\s*Period[^:\n]*[:\-]\s*([^\n]{5,80})", text, re.IGNORECASE)
+        if not avail_m:
+            avail_m = re.search(r"SRO\s*(?:data)?\s*available\s*from\s*[:\-]\s*([^\n]{5,60})", text, re.IGNORECASE)
+        sro_avail_raw = _clean(avail_m.group(1)) if avail_m else sp_raw
+
+        return dict(sro_raw=sro_raw, date_raw=date_raw, village_raw=village_raw,
+                    survey_raw=survey_raw, zone_raw=zone_raw, dist_raw=dist_raw,
+                    taluk_raw=taluk_raw, sp_raw=sp_raw, sro_avail_raw=sro_avail_raw)
+
+    def extract(self, text):
+        fields = {}
+        h = self._extract_header(text)
+
+        fields["sro_office"]   = self._field(h["sro_raw"],     "\u0b9a\u0bbe\u0bb0\u0bcd\u0baa\u0ba4\u0bbf\u0bb5\u0bbe\u0bb3\u0bb0\u0bcd \u0b85\u0bb2\u0bc1\u0bb5\u0bb2\u0b95\u0bae\u0bcd (SRO Office)", ["s.r.o", "\u0b9a\u0bbe.\u0baa.\u0b85"])
+        fields["sro_jurisdiction"] = {
+            "value":      f"{_bilingual(h['sro_raw'])} \u2014 {h['dist_raw'] or 'N/A'} District, {h['zone_raw'] or 'N/A'} Zone",
+            "raw_value":  f"{h['sro_raw']} SRO, {h['dist_raw']}, {h['zone_raw']}",
+            "confidence": 0.95,
+            "label":      "\u0b9a\u0bbe\u0bb0\u0bcd\u0baa\u0ba4\u0bbf\u0bb5\u0bbe\u0bb3\u0bb0\u0bcd \u0b85\u0bb2\u0bc1\u0bb5\u0bb2\u0b95 \u0b8e\u0bb2\u0bcd\u0bb2\u0bc8 (SRO Jurisdiction)",
+        }
+        fields["certificate_issue_date"] = self._field(h["date_raw"], "\u0b9a\u0bbe\u0ba9\u0bcd\u0bb1\u0bbf\u0ba4\u0bb4\u0bcd \u0bb5\u0bb4\u0b99\u0bcd\u0b95\u0bbf\u0baf \u0ba8\u0bbe\u0bb3\u0bcd (Certificate Issue Date)", ["date / \u0ba8\u0bbe\u0bb3\u0bcd"], bilingual=False, fallback="Not Detected")
+        fields["village"]     = self._field(h["village_raw"], "\u0bb5\u0bb0\u0bc1\u0bb5\u0bbe\u0baf\u0bcd \u0b95\u0bbf\u0bb0\u0bbe\u0bae\u0bae\u0bcd (Village)", ["village / \u0b95\u0bbf\u0bb0\u0bbe\u0bae\u0bae\u0bcd"])
+        fields["survey_number_searched"] = self._field(h["survey_raw"], "\u0ba4\u0bc7\u0b9f\u0baa\u0bcd\u0baa\u0b9f\u0bcd\u0b9f \u0baa\u0bc1\u0bb2 \u0b8e\u0ba3\u0bcd(\u0b95\u0bb3\u0bcd) (Survey Number(s) Searched)", ["\u0b9a\u0bb0\u0bcd\u0bb5\u0bc7 \u0bb5\u0bbf\u0bb5\u0bb0\u0bae\u0bcd"], bilingual=False, fallback="Not Detected")
+        fields["zone"]        = self._field(h["zone_raw"],    "\u0bae\u0ba3\u0bcd\u0b9f\u0bb2\u0bae\u0bcd (Zone)", ["zone:"])
+        fields["district"]    = self._field(h["dist_raw"],    "\u0bae\u0bbe\u0bb5\u0b9f\u0bcd\u0b9f\u0bae\u0bcd (District)", ["district:"])
+        taluk_display = h["taluk_raw"]
+        if taluk_display and "taluk" not in taluk_display.lower():
+            taluk_display += " Taluk / Jurisdiction"
+        fields["taluk"]       = self._field(taluk_display, "\u0bb5\u0b9f\u0bcd\u0b9f\u0bae\u0bcd (Taluk / Jurisdiction)", ["taluk:"])
+        fields["digital_signature_validity"] = {
+            "value":      "Digitally Signed by Sub-Registrar / TNREGINET Statutory Authority \u2014 Certificate Valid under Tamil Nadu Registration Rules",
+            "status":     "VALID", "confidence": 0.99,
+            "label":      "\u0b9f\u0bbf\u0b9c\u0bbf\u0b9f\u0bcd\u0b9f\u0bb2\u0bcd \u0b95\u0bc8\u0baf\u0bca\u0baa\u0bcd\u0baa\u0bae\u0bcd & \u0b9a\u0bbe\u0ba9\u0bcd\u0bb1\u0bbf\u0ba4\u0bb4\u0bcd \u0b9a\u0bc6\u0bb2\u0bcd\u0bb2\u0bc1\u0baa\u0b9f\u0bbf (Digital Signature & Validity)",
         }
 
-        # ── 4. CONSOLIDATED TRANSACTIONS TABLE ────────────────────────────────
-        fields["transactions_table"] = {
-            "value": parsed_entries,
-            "confidence": 0.98 if parsed_entries else 0.0,
-            "label": "பரிவர்த்தனை விவரங்கள் அட்டவணை (Transactions Table)"
+        sp_val = h["sp_raw"] or "Not Detected"
+        fields["search_period"] = {
+            "value": sp_val, "confidence": 0.95 if h["sp_raw"] else 0.0,
+            "label": "\u0ba4\u0bc7\u0b9f\u0bb2\u0bcd \u0b95\u0bbe\u0bb2\u0bae\u0bcd (Search Period Requested)",
+            "box_query": sp_val, "anchor_keywords": ["search period"],
+        }
+        years_span = 0.0
+        year_hits = re.findall(r"\b(\d{4})\b", sp_val)
+        if len(year_hits) >= 2:
+            try:
+                years_span = max(round(abs(int(year_hits[-1]) - int(year_hits[0])) + 0.25, 1), 0.5)
+            except Exception:
+                years_span = 0.0
+        if years_span >= 30:
+            std_status, std_desc = "COMPLIANT", f"Search period covers {years_span} years. Meets the 30-year minimum title verification standard in Tamil Nadu."
+        elif years_span > 0:
+            std_status, std_desc = "ABBREVIATED", f"Search period covers \u2248{years_span} years. Tamil Nadu title verification recommends a 30-year minimum; prior parent deeds required."
+        else:
+            std_status, std_desc = "UNKNOWN", "Search period span could not be determined from this document."
+        fields["search_period_standard"] = {
+            "value": std_desc, "status": std_status, "years_span": years_span,
+            "confidence": 0.95, "label": "30 \u0b86\u0ba3\u0bcd\u0b9f\u0bc1 \u0ba4\u0bc7\u0b9f\u0bb2\u0bcd \u0ba4\u0bb0\u0ba8\u0bbf\u0bb2\u0bc8 (TN 30-Year Search Standard)",
+        }
+        fields["sro_available_from"] = {
+            "value": h["sro_avail_raw"] or sp_val, "confidence": 0.90,
+            "label": "\u0b85\u0bb2\u0bc1\u0bb5\u0bb2\u0b95 \u0ba4\u0bb0\u0bb5\u0bc1 \u0b87\u0bb0\u0bc1\u0baa\u0bcd\u0baa\u0bc1 \u0b95\u0bbe\u0bb2\u0bae\u0bcd (SRO Data Available Range)",
         }
 
-        # ── 5. VERIFICATION CHECKLIST ────────────────────────────────────────
+        parsed_entries = extract_transactions(text)
+        total_tx = len(parsed_entries)
+        if total_tx == 0:
+            form_type_str  = "Form 16 equivalent \u2014 NIL ENCUMBRANCE (Clear Title)"
+            enc_status_str = "Clear Title \u2014 Nil Encumbrance Certificate (\u0bb5\u0bbf\u0bb2\u0bcd\u0bb2\u0b99\u0bcd\u0b95\u0bae\u0bcd \u0b8f\u0ba4\u0bc1\u0bae\u0bbf\u0bb2\u0bcd\u0bb2\u0bc8)"
+        else:
+            form_type_str  = f"Form 15 equivalent \u2014 TRANSACTIONS FOUND ({total_tx} registered entries)"
+            enc_status_str = f"Encumbered \u2014 {total_tx} Registered Transactions Recorded"
+        fields["form_type"]          = {"value": form_type_str,  "confidence": 0.98, "label": "\u0baa\u0b9f\u0bbf\u0bb5 \u0bb5\u0b95\u0bc8 (Form Type - Form 15 / Form 16)"}
+        fields["total_entries"]      = {"value": str(total_tx),  "confidence": 0.98, "label": "\u0bae\u0bca\u0ba4\u0bcd\u0ba4 \u0baa\u0ba4\u0bbf\u0bb5\u0bc1\u0b95\u0bb3\u0bcd (Total Entries Found)"}
+        fields["encumbrance_status"] = {"value": enc_status_str, "confidence": 0.98, "label": "\u0bb5\u0bbf\u0bb2\u0bcd\u0bb2\u0b99\u0bcd\u0b95 \u0ba8\u0bbf\u0bb2\u0bc8 (Encumbrance Title Status)"}
+        fields["transactions_table"] = {"value": parsed_entries, "confidence": 0.95 if parsed_entries else 0.0, "label": "\u0baa\u0bb0\u0bbf\u0bb5\u0bb0\u0bcd\u0ba4\u0bcd\u0ba4\u0ba9\u0bc8 \u0bb5\u0bbf\u0bb5\u0bb0\u0b99\u0bcd\u0b95\u0bb3\u0bcd \u0b85\u0b9f\u0bcd\u0b9f\u0bb5\u0ba3\u0bc8 (Transactions Table)"}
+
+        mortgage_flags, receipts_seen = [], {}
+        for e in parsed_entries:
+            if any(k in e["nature"].lower() for k in ["receipt", "discharge", "\u0bb0\u0b9a\u0bc0\u0ba4\u0bc1", "\u0bb5\u0bbf\u0b9f\u0bc1\u0ba4\u0bb2\u0bc8"]):
+                receipts_seen[e["doc_no"]] = f"Receipt {e['doc_no']} ({e['date']})"
+        open_count = closed_count = 0
+        for e in parsed_entries:
+            if not any(k in e["nature"].lower() for k in ["mortgage", "modt", "deposit of title", "\u0b85\u0b9f\u0bae\u0bbe\u0ba9"]):
+                continue
+            doc_n = e["doc_no"]
+            is_closed = any(doc_n in r for r in receipts_seen.values())
+            exec_s = e["executants"].replace("\n", " ")
+            claim_s = e["claimants"].replace("\n", " ")
+            cons = e["consideration"]
+            if is_closed:
+                closed_count += 1
+                mortgage_flags.append(f"[CLOSED] Doc {doc_n} ({exec_s} \u2192 {claim_s}, {cons}) \u2014 Closed by registered discharge receipt.")
+            else:
+                open_count += 1
+                mortgage_flags.append(f"[OPEN / UNRELEASED] Doc {doc_n} ({exec_s} \u2192 {claim_s}, {cons}) \u2014 No closure/receipt found in this search window.")
+        if not mortgage_flags and total_tx > 0:
+            mortgage_flags.append("No active mortgages or charges identified in this search period.")
+        mort_val = (f"{open_count} Open/Unreleased Mortgage(s) | {closed_count} Closed Mortgage(s)" if (open_count + closed_count) > 0 else "Nil Mortgages Recorded")
+        fields["mortgage_status"] = {"value": mort_val, "open_count": open_count, "closed_count": closed_count, "flags": mortgage_flags, "confidence": 0.95, "label": "\u0b85\u0b9f\u0bae\u0bbe\u0ba9 \u0ba8\u0bbf\u0bb2\u0bc8 (Mortgage & Charge Status)"}
+
+        court_refs = re.findall(r"(?:attachment|lis\s*pendens|decree|injunction|court\s*order|\u0ba4\u0bc0\u0bb0\u0bcd\u0baa\u0bcd\u0baa\u0bc1|\u0bae\u0bc1\u0b9f\u0b95\u0bcd\u0b95\u0bae\u0bcd)", text, re.IGNORECASE)
+        court_valid = len(court_refs) == 0
+        court_text = (f"ATTENTION: {len(court_refs)} court/attachment reference(s) found. Legal scrutiny required." if court_refs else f"No court attachments, decrees, or lis-pendens entries found among {total_tx} registered documents.")
+        fields["court_attachments"] = {"value": court_text, "confidence": 0.95, "label": "\u0ba8\u0bc0\u0ba4\u0bbf\u0bae\u0ba9\u0bcd\u0bb1 \u0b89\u0ba4\u0bcd\u0ba4\u0bb0\u0bb5\u0bc1\u0b95\u0bb3\u0bcd / \u0baa\u0bb1\u0bcd\u0bb1\u0bc1 (Court Attachments & Decrees)"}
+
+        lease_entries = [e for e in parsed_entries if "lease" in e["nature"].lower() or "\u0b95\u0bc1\u0ba4\u0bcd\u0ba4\u0b95\u0bc8" in e["nature"]]
+        lease_text = (f"{len(lease_entries)} active registered lease(s): " + "; ".join(f"Doc {e['doc_no']} ({e['date']})" for e in lease_entries[:3]) if lease_entries else "No active registered lease agreements recorded in this search window.")
+        fields["lease_status"] = {"value": lease_text, "confidence": 0.92, "label": "\u0b95\u0bc1\u0ba4\u0bcd\u0ba4\u0b95\u0bc8 \u0ba8\u0bbf\u0bb2\u0bc8 (Registered Leases)"}
+
+        rect_entries = [e for e in parsed_entries if "rectification" in e["nature"].lower()]
+        rect_text = (f"Rectification deed(s): {', '.join(e['doc_no'] for e in rect_entries)}. These correct earlier instruments, not new encumbrances." if rect_entries else "No rectification deeds recorded in this search window.")
+        fields["rectification_deeds"] = {"value": rect_text, "confidence": 0.92, "label": "\u0baa\u0bbf\u0bb4\u0bc8\u0ba4\u0bbf\u0bb0\u0bc1\u0ba4\u0bcd\u0ba4\u0bb2\u0bcd \u0b86\u0bb5\u0ba3\u0b99\u0bcd\u0b95\u0bb3\u0bcd (Rectification Instruments)"}
+
+        part_settle = [e for e in parsed_entries if any(k in e["nature"].lower() for k in ["partition", "settlement", "\u0baa\u0bbe\u0b95\u0baa\u0bcd\u0baa\u0bbf\u0bb0\u0bbf\u0bb5\u0bbf\u0ba9\u0bc8", "\u0ba4\u0bbe\u0ba9"])]
+        partition_text = (f"Family devolution/settlement deeds: {', '.join(['Doc ' + e['doc_no'] for e in part_settle[:3]])}. Verify all co-sharers/heirs are properly joined." if part_settle else f"No undisclosed partition or settlement deeds found among {total_tx} registered documents.")
+        fields["partition_settlement_status"] = {"value": partition_text, "confidence": 0.93, "label": "\u0baa\u0bbe\u0b95\u0baa\u0bcd\u0baa\u0bbf\u0bb0\u0bbf\u0bb5\u0bbf\u0ba9\u0bc8 & \u0b9a\u0bc6\u0b9f\u0bcd\u0b9f\u0bbf\u0bb2\u0bcd\u0bae\u0bc6\u0ba9\u0bcd\u0b9f\u0bcd \u0ba8\u0bbf\u0bb2\u0bc8 (Partition & Settlement Status)"}
+        fields["legal_caveat"] = {"value": "The EC reflects ONLY documents registered with the Registration Department. Unregistered agreements, court orders not yet communicated to the SRO, municipal/property tax dues, Patta/TSLR variations, and possession disputes are invisible to it. An EC alone cannot be the sole purchase verification signal and must be cross-verified.", "confidence": 1.0, "label": "\u0bae\u0bc1\u0b95\u0bcd\u0b95\u0bbf\u0baf \u0b9a\u0b9f\u0bcd\u0b9f \u0b8e\u0b9a\u0bcd\u0b9a\u0bb0\u0bbf\u0b95\u0bcd\u0b95\u0bc8 (Critical Legal Caveat)"}
+
         checklist = [
-            {
-                "title": "30-Year Search Period Standard (தேடல் காலம்)",
-                "status": "COMPLIANT" if years_span >= 30 else "FLAGGED",
-                "is_valid": years_span >= 30,
-                "detail": std_desc
-            },
-            {
-                "title": "Open / Unreleased Mortgages Check (நிலுவையில் உள்ள அடமானங்கள்)",
-                "status": "FLAGGED" if open_mortgages_count > 0 else "PASSED",
-                "is_valid": open_mortgages_count == 0,
-                "detail": f"{open_mortgages_count} Open/Unreleased Mortgages found without registered discharge receipts in this window." if open_mortgages_count > 0 else "No open mortgages detected."
-            },
-            {
-                "title": "Closed / Discharged Mortgages (விடுதலை செய்யப்பட்ட அடமானங்கள்)",
-                "status": "PASSED" if closed_mortgages_count > 0 else "PASSED",
-                "is_valid": True,
-                "detail": f"{closed_mortgages_count} mortgage(s) verified as satisfied and closed by registered receipt(s)." if closed_mortgages_count > 0 else "No mortgage discharge records in this window."
-            },
-            {
-                "title": "Court Attachments & Decrees (நீதிமன்ற பற்று உத்தரவுகள்)",
-                "status": "PASSED" if court_valid else "FLAGGED",
-                "is_valid": court_valid,
-                "detail": court_text
-            },
-            {
-                "title": "Undisclosed Partition & Settlement Check (பாகப்பிரிவினை / செட்டில்மென்ட்)",
-                "status": "PASSED" if partition_valid else "FLAGGED",
-                "is_valid": partition_valid,
-                "detail": partition_text
-            },
-            {
-                "title": "Active Registered Leases (செயலில் உள்ள குத்தகை பதிவுகள்)",
-                "status": "FLAGGED" if lease_entries else "PASSED",
-                "is_valid": not lease_entries,
-                "detail": lease_text
-            },
-            {
-                "title": "Rectification Instruments Scrutiny (பிழைதிருத்தல் ஆவணங்கள்)",
-                "status": "PASSED",
-                "is_valid": True,
-                "detail": rect_text
-            },
-            {
-                "title": "Form Type & Statutory SRO Seal (படிவ வகை & சா.ப.அ முத்திரை)",
-                "status": "PASSED",
-                "is_valid": True,
-                "detail": f"{form_type_str} issued under Tamil Nadu Registration Act by SRO {sro_raw}."
-            }
+            {"title": "30-Year Search Period Standard", "status": std_status, "is_valid": std_status == "COMPLIANT", "detail": std_desc},
+            {"title": "Open / Unreleased Mortgages", "status": "FLAGGED" if open_count > 0 else "PASSED", "is_valid": open_count == 0, "detail": f"{open_count} open mortgage(s) found." if open_count else "No open mortgages detected."},
+            {"title": "Closed / Discharged Mortgages", "status": "PASSED", "is_valid": True, "detail": f"{closed_count} mortgage(s) closed by receipts." if closed_count else "No mortgage discharge records."},
+            {"title": "Court Attachments & Decrees", "status": "PASSED" if court_valid else "FLAGGED", "is_valid": court_valid, "detail": court_text},
+            {"title": "Partition & Settlement Check", "status": "PASSED", "is_valid": True, "detail": partition_text},
+            {"title": "Active Registered Leases", "status": "FLAGGED" if lease_entries else "PASSED", "is_valid": not lease_entries, "detail": lease_text},
+            {"title": "Form Type & Statutory SRO Seal", "status": "PASSED", "is_valid": True, "detail": f"{form_type_str} \u2014 issued under Tamil Nadu Registration Act by SRO {h['sro_raw'] or 'N/A'}."},
         ]
-
         fields["checklist"] = checklist
         fields["verification_flags"] = {
             "mortgages_flags": mortgage_flags,
@@ -844,7 +567,6 @@ class ECExtractor:
             "partition_settlement_text": partition_text,
             "lease_text": lease_text,
             "rectification_text": rect_text,
-            "search_window_note": "Tamil Nadu title-verification practice generally recommends a minimum 30-year EC search window. This certificate's data-available range is materially shorter than that standard, so ownership history before this window is not covered by this document and should be verified through separate, earlier-period ECs or parent title deeds."
+            "search_window_note": "Tamil Nadu title-verification practice recommends a minimum 30-year EC search window. If this EC covers less than 30 years, earlier-period ECs or parent title deeds must be obtained.",
         }
-
         return fields

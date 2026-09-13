@@ -1,6 +1,11 @@
 # -*- coding: utf-8 -*-
 """Runner script for Property Document OCR Web Server"""
 import uvicorn
+import asyncio
+import sys
+
+if sys.platform == 'win32':
+    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
 if __name__ == "__main__":
     print("=========================================================")
