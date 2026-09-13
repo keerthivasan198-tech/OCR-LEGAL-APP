@@ -27,7 +27,13 @@ def _get_registered_fonts():
     font_name = 'Helvetica'
     font_bold = 'Helvetica-Bold'
     
+    # Absolute paths to bundled fonts
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    bundled_reg = os.path.join(base_dir, "fonts", "NotoSansTamil-Regular.ttf")
+    bundled_bold = os.path.join(base_dir, "fonts", "NotoSansTamil-Bold.ttf")
+    
     font_candidates = [
+        (bundled_reg, bundled_bold, "NotoSansTamil", "NotoSansTamil-Bold"),
         (r"C:\Windows\Fonts\latha.ttf", r"C:\Windows\Fonts\lathab.ttf", "Latha", "Latha-Bold"),
         (r"C:\Windows\Fonts\vijaya.ttf", r"C:\Windows\Fonts\vijayab.ttf", "Vijaya", "Vijaya-Bold"),
         (r"C:\Windows\Fonts\ARIALUNI.TTF", r"C:\Windows\Fonts\ARIALUNI.TTF", "ArialUnicode", "ArialUnicode-Bold"),
