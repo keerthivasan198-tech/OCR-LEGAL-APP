@@ -198,7 +198,8 @@ async def run_inheritance_verification(inh_data: Dict[str, Any]):
 async def process_document_upload(
     file: UploadFile = File(...),
     doc_type: Optional[str] = Form("auto"),
-    lang: Optional[str] = Form("ta")
+    lang: Optional[str] = Form("ta"),
+    property_filter: Optional[str] = Form(None)
 ):
     """Process uploaded file: runs OCR, deep entity extraction, and legal checklist."""
     try:
@@ -215,7 +216,21 @@ async def process_document_upload(
             text_to_extract = f"Document: {filename}\nNo legible text detected."
 
         target_doc_type = doc_type if doc_type and doc_type != "auto" else None
-        extraction_result = extractor.extract(text_to_extract, doc_type=target_doc_type, pages=ocr_result['pages'])
+        
+        parsed_property_filter = None
+        if property_filter:
+            try:
+                import json
+                parsed_property_filter = json.loads(property_filter)
+            except Exception as e:
+                logger.warning(f"Failed to parse property filter: {e}")
+
+        extraction_result = extractor.extract(
+            text_to_extract, 
+            doc_type=target_doc_type, 
+            pages=ocr_result['pages'],
+            property_filter=parsed_property_filter
+        )
 
         return {
             "status": "success",

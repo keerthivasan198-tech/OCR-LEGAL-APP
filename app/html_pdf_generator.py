@@ -11,11 +11,11 @@ async def generate_html_pdf_report(data: Dict[str, Any]) -> bytes:
     ext = data.get("extraction", {})
     fields = ext.get("fields", {}) or data.get("fields", {})
     doc_type = data.get("doc_type", "document")
-    checklist = ext.get("checklist", [])
+    checklist = data.get("checklist") if "checklist" in data else ext.get("checklist", [])
     full_text = ext.get("full_text") or data.get("full_text") or data.get("raw_text") or ""
     
     # Extract transactions table if it exists
-    tx_table_data = fields.get("transactions_table", {}).get("value", [])
+    tx_table_data = fields.get("filtered_transactions_table", fields.get("transactions_table", {})).get("value", [])
     
     now_str = datetime.datetime.now().strftime('%b %d %Y, %H:%M')
     
@@ -134,7 +134,7 @@ async def generate_html_pdf_report(data: Dict[str, Any]) -> bytes:
         <tbody>
     '''
     for k, v in fields.items():
-        if k in ["transactions_table", "verification_flags", "checklist"]:
+        if k in ["transactions_table", "filtered_transactions_table", "verification_flags", "checklist"]:
             continue
         lbl = str(v.get("label", k.replace("_", " ").title()))
         val = str(v.get("value", "Not Detected")).replace("\n", "<br>")
@@ -167,8 +167,17 @@ async def generate_html_pdf_report(data: Dict[str, Any]) -> bytes:
         '''
         for item in checklist:
             item_title = str(item.get("title", item.get("item", "Check")))
-            status = str(item.get("status", "Pending")).upper()
-            details = str(item.get("detail", item.get("details", "-"))).replace("\n", "<br>")
+            
+            is_valid = item.get("is_valid")
+            if is_valid is True:
+                status = "PASSED"
+                details = "Verified successfully."
+            elif is_valid is False:
+                status = "FAILED"
+                details = "Verification failed or data missing."
+            else:
+                status = str(item.get("status", "PENDING")).upper()
+                details = str(item.get("detail", item.get("details", "-"))).replace("\n", "<br>")
             
             status_color = "#dc2626"
             if status in ["PASSED", "PASS", "VERIFIED"]: status_color = "#16a34a"

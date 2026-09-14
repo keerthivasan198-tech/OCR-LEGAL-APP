@@ -395,7 +395,7 @@ class DocumentExtractor:
 
         return None
 
-    def extract(self, text, doc_type=None, pages=None):
+    def extract(self, text, doc_type=None, pages=None, property_filter=None):
         if not doc_type or doc_type not in self.categories:
             doc_type = self.detect_document_type(text)
 
@@ -403,7 +403,10 @@ class DocumentExtractor:
 
         # Always dynamically analyze text extracted from document using dedicated modular extractor
         if doc_type in self.extractors:
-            fields = self.extractors[doc_type].extract(text)
+            if doc_type == "ec":
+                fields = self.extractors[doc_type].extract(text, property_filter=property_filter)
+            else:
+                fields = self.extractors[doc_type].extract(text)
         else:
             handler = getattr(self, f"_extract_{doc_type}", self._extract_generic)
             fields = handler(text)
@@ -963,11 +966,11 @@ class DocumentExtractor:
             checklist.append({"title": "வருவாய் கிராமம் / வட்டம் / மாவட்டம் (Revenue Village / Taluk / District Verified)", "is_valid": _detected("village") and _detected("taluk") and _detected("district")})
             checklist.append({"title": "பரப்பளவு மற்றும் நில வகைப்பாடு (Land Extent & Classification Verified)", "is_valid": _detected("extent_details") and _detected("nature_of_land")})
         elif doc_type == "ec":
-            checklist.append({"title": "30 ஆண்டு தேடல் காலம் சரிபார்ப்பு (30-Year Search Period Verified)", "is_valid": _detected("search_period")})
-            checklist.append({"title": "படிவம் 15 / 16 வகைப்பாடு (Form 15/16 Classification Verified)", "is_valid": _detected("form_type")})
+            checklist.append({"title": "30 ஆண்டு தேடல் காலம் சரிபார்ப்பு (30-Year Search Period Verified)", "is_valid": _detected("search_period_standard")})
+            checklist.append({"title": "படிவம் 15 / 16 வகைப்பாடு (Form 15/16 Classification Verified)", "is_valid": _detected("search_period")})
             checklist.append({"title": "சார் பதிவாளர் & கிராம எல்லை சரிபார்ப்பு (SRO & Village Jurisdiction Verified)", "is_valid": _detected("sro_office") and _detected("village")})
-            checklist.append({"title": "புல எண்கள் மற்றும் உட்பிரிவு சரிபார்ப்பு (Survey Numbers Verified)", "is_valid": _detected("survey_numbers")})
-            checklist.append({"title": "வில்லங்கப் பதிவுகள் ஆய்வு (Encumbrance Transactions Register Analyzed)", "is_valid": _detected("total_transactions") or _detected("encumbrance_status")})
+            checklist.append({"title": "புல எண்கள் மற்றும் உட்பிரிவு சரிபார்ப்பு (Survey Numbers Verified)", "is_valid": _detected("survey_number_searched")})
+            checklist.append({"title": "வில்லங்கப் பதிவுகள் ஆய்வு (Encumbrance Transactions Register Analyzed)", "is_valid": _detected("total_entries")})
         elif doc_type == "death_legal_heir":
             checklist.append({"title": "இறந்தவர் பெயர் உரிமை பதிவுடன் ஒத்துவருகிறது (Deceased Name Matches Title)", "is_valid": _detected("deceased_name")})
             checklist.append({"title": "அனைத்து வாரிசுகளும் கையெழுத்திட்டுள்ளனர் (100% Heirs Signed)", "is_valid": _detected("legal_heirs")})

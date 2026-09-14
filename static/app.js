@@ -132,6 +132,15 @@ function selectCategory(catId, loadDoc = true) {
     updateCategoryInfo(catId);
     lucide.createIcons();
 
+    const ecFilterContainer = document.getElementById("ec-property-filter-container");
+    if (ecFilterContainer) {
+        if (catId === 'ec') {
+            ecFilterContainer.classList.remove("hidden");
+        } else {
+            ecFilterContainer.classList.add("hidden");
+        }
+    }
+
     if (state.currentFile) {
         triggerProcess();
     } else if (loadDoc && state.currentResult) {
@@ -285,6 +294,7 @@ async function triggerProcess() {
     formData.append("doc_type", docType);
     formData.append("lang", lang);
 
+
     try {
         const res = await fetch("/api/ocr/process", {
             method: "POST",
@@ -323,6 +333,16 @@ function renderDocumentResult() {
     const currentPage = pages[state.currentPageIndex] || pages[0] || {};
 
     document.getElementById("result-doc-type-title").textContent = extraction.document_type_name || "Extracted Document";
+    
+    // Only show PDF language options for EC documents
+    const langSelect = document.getElementById("pdf-lang-select");
+    if (langSelect) {
+        if (extraction.document_type_id === "ec" || state.selectedCategoryId === "ec") {
+            langSelect.classList.remove("hidden");
+        } else {
+            langSelect.classList.add("hidden");
+        }
+    }
     const totalPages = res.total_pages || pages.length || 1;
     document.getElementById("page-indicator").textContent = `Page ${state.currentPageIndex + 1} / ${totalPages}`;
     document.getElementById("btn-prev-page").disabled = state.currentPageIndex <= 0;
@@ -1667,7 +1687,8 @@ async function exportResult(format) {
         total_pages: res_data.total_pages || 1,
         extraction: extraction,
         fields: extraction.fields || {},
-        checklist: extraction.checklist || []
+        checklist: (format === 'pdf') ? [] : (extraction.checklist || []),
+        lang_mode: "raw"
     };
 
     try {

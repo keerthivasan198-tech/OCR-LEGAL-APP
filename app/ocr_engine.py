@@ -46,29 +46,25 @@ class OCREngine:
             logger.error(f"PaddleOCR import error: {e}")
 
     def _get_pipeline_ta(self):
-        """Primary Tamil pipeline: PaddleOCR-VL-1.6 with PP-OCRv5_server_det + ta_PP-OCRv5_mobile_rec."""
+        """Primary Tamil pipeline."""
         if self._pipeline_ta is None and self.paddle_available:
-            logger.info("Loading PaddleOCR-VL-1.6 Tamil pipeline: PaddleOCR(lang='ta')...")
+            logger.info("Loading PaddleOCR Tamil pipeline: PaddleOCR(lang='ta')...")
             self._pipeline_ta = self.PaddleOCR(
                 lang="ta",
-                use_doc_orientation_classify=True,
-                use_doc_unwarping=False,
-                use_textline_orientation=True,
+                enable_mkldnn=False
             )
-            logger.info("PaddleOCR-VL-1.6 Tamil pipeline loaded.")
+            logger.info("PaddleOCR Tamil pipeline loaded.")
         return self._pipeline_ta
 
     def _get_pipeline_en(self):
-        """Secondary English pipeline: PaddleOCR-VL-1.6 with PP-OCRv6_medium_det + PP-OCRv6_medium_rec."""
+        """Secondary English pipeline."""
         if self._pipeline_en is None and self.paddle_available:
-            logger.info("Loading PaddleOCR-VL-1.6 English pipeline: PaddleOCR(lang='en')...")
+            logger.info("Loading PaddleOCR English pipeline: PaddleOCR(lang='en')...")
             self._pipeline_en = self.PaddleOCR(
                 lang="en",
-                use_doc_orientation_classify=True,
-                use_doc_unwarping=False,
-                use_textline_orientation=True,
+                enable_mkldnn=False
             )
-            logger.info("PaddleOCR-VL-1.6 English pipeline loaded.")
+            logger.info("PaddleOCR English pipeline loaded.")
         return self._pipeline_en
 
     # -- File Conversion --
